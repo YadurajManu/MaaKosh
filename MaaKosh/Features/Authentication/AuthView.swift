@@ -9,6 +9,38 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 
+// Typography constants for consistent styling
+struct AppFont {
+    // Font methods with system fallbacks
+    static func titleLarge() -> Font {
+        return Font.system(size: 32, weight: .bold, design: .rounded)
+    }
+    
+    static func titleMedium() -> Font {
+        return Font.system(size: 24, weight: .bold, design: .rounded)
+    }
+    
+    static func titleSmall() -> Font {
+        return Font.system(size: 20, weight: .semibold, design: .rounded)
+    }
+    
+    static func body() -> Font {
+        return Font.system(size: 16, weight: .regular, design: .rounded)
+    }
+    
+    static func caption() -> Font {
+        return Font.system(size: 14, weight: .regular, design: .rounded)
+    }
+    
+    static func small() -> Font {
+        return Font.system(size: 12, weight: .regular, design: .rounded)
+    }
+    
+    static func buttonText() -> Font {
+        return Font.system(size: 18, weight: .semibold, design: .rounded)
+    }
+}
+
 enum AuthViewState {
     case signIn
     case signUp
@@ -48,6 +80,7 @@ struct AuthView: View {
     @State private var showTermsSheet = false
     @State private var showPrivacySheet = false
     @State private var isLoading = false
+    @State private var showPassword = false
     
     // Validation states
     @State private var isEmailValid = false
@@ -81,7 +114,7 @@ struct AuthView: View {
     
     var body: some View {
         if isAuthenticated {
-            ContentView()
+            UserOnboardingView(userId: Auth.auth().currentUser?.uid ?? "")
         } else {
             ZStack {
                 // Background gradient
@@ -112,12 +145,14 @@ struct AuthView: View {
                                 )
                             
                             Text("MaaKosh")
-                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .font(AppFont.titleLarge())
                                 .foregroundColor(Color.maakoshDeepPink)
+                                .kerning(1.2)
                             
                             Text(authState == .signIn ? "Welcome Back" : "Create Account")
-                                .font(.system(size: 20, weight: .medium, design: .rounded))
+                                .font(AppFont.titleSmall())
                                 .foregroundColor(Color.black.opacity(0.7))
+                                .kerning(0.5)
                         }
                         .padding(.top, 50)
                         .padding(.bottom, 30)
@@ -172,17 +207,55 @@ struct AuthView: View {
                             
                             // Password field with strength meter
                             VStack(alignment: .leading, spacing: 5) {
-                                AuthSecureField(
-                                    iconName: "lock.fill",
-                                    placeholder: "Password",
-                                    text: $password,
-                                    isFocused: $isPasswordFocused
+                                HStack(spacing: 15) {
+                                    Image(systemName: "lock.fill")
+                                        .foregroundColor(Color.maakoshDeepPink)
+                                        .frame(width: 20)
+                                    
+                                    Group {
+                                        if showPassword {
+                                            TextField(
+                                                "Password",
+                                                text: $password
+                                            )
+                                            .font(AppFont.body())
+                                            .autocapitalization(.none)
+                                            .disableAutocorrection(true)
+                                        } else {
+                                            SecureField(
+                                                "Password",
+                                                text: $password
+                                            )
+                                            .font(AppFont.body())
+                                            .autocapitalization(.none)
+                                            .disableAutocorrection(true)
+                                        }
+                                    }
+                                    
+                                    Button(action: {
+                                        withAnimation {
+                                            showPassword.toggle()
+                                        }
+                                    }) {
+                                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                            .foregroundColor(Color.maakoshDeepPink.opacity(0.7))
+                                            .frame(width: 20, height: 20)
+                                    }
+                                }
+                                .padding()
+                                .background(Color.white.opacity(0.8))
+                                .cornerRadius(15)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 15)
+                                        .stroke(Color.maakoshMediumPink.opacity(0.2), lineWidth: 1)
                                 )
+                                .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 3)
                                 .onChange(of: password) { _ in
                                     showPasswordStrength = password.count > 0
                                     showPasswordTooltip = isPasswordFocused && password.count > 0 && passwordStrength == .weak
                                 }
                                 .onTapGesture {
+                                    isPasswordFocused = true
                                     showPasswordTooltip = password.count > 0 && passwordStrength == .weak
                                 }
                                 
@@ -190,7 +263,7 @@ struct AuthView: View {
                                 if showPasswordStrength {
                                     VStack(alignment: .leading, spacing: 5) {
                                         Text("Password Strength: \(passwordStrength.description)")
-                                            .font(.system(size: 12))
+                                            .font(AppFont.small())
                                             .foregroundColor(passwordStrength.color)
                                         
                                         // Strength meter bar
@@ -225,7 +298,7 @@ struct AuthView: View {
                                         forgotPassword()
                                     }) {
                                         Text("Forgot Password?")
-                                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                                            .font(AppFont.caption())
                                             .foregroundColor(Color.maakoshDeepPink)
                                     }
                                 }
@@ -262,16 +335,16 @@ struct AuthView: View {
                                         
                                         // Terms text with links
                                         Text("I agree to the ")
-                                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                                            .font(AppFont.caption())
                                             .foregroundColor(Color.black.opacity(0.7)) +
                                         Text("Terms & Conditions")
-                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                            .font(AppFont.caption())
                                             .foregroundColor(Color.maakoshDeepPink) +
                                         Text(" and ")
-                                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                                            .font(AppFont.caption())
                                             .foregroundColor(Color.black.opacity(0.7)) +
                                         Text("Privacy Policy")
-                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                            .font(AppFont.caption())
                                             .foregroundColor(Color.maakoshDeepPink)
                                     }
                                     .onTapGesture {
@@ -283,7 +356,7 @@ struct AuthView: View {
                                     HStack {
                                         Button(action: { showTermsSheet = true }) {
                                             Text("Read Terms & Conditions")
-                                                .font(.system(size: 12, weight: .regular, design: .rounded))
+                                                .font(AppFont.small())
                                                 .foregroundColor(Color.maakoshDeepPink)
                                         }
                                         
@@ -291,7 +364,7 @@ struct AuthView: View {
                                         
                                         Button(action: { showPrivacySheet = true }) {
                                             Text("Read Privacy Policy")
-                                                .font(.system(size: 12, weight: .regular, design: .rounded))
+                                                .font(AppFont.small())
                                                 .foregroundColor(Color.maakoshDeepPink)
                                         }
                                     }
@@ -309,15 +382,15 @@ struct AuthView: View {
                                     Spacer()
                                     Button(action: { showTermsSheet = true }) {
                                         Text("Terms")
-                                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                                            .font(AppFont.small())
                                             .foregroundColor(Color.black.opacity(0.6))
                                     }
                                     Text("•")
-                                        .font(.system(size: 12))
+                                        .font(AppFont.small())
                                         .foregroundColor(Color.black.opacity(0.6))
                                     Button(action: { showPrivacySheet = true }) {
                                         Text("Privacy")
-                                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                                            .font(AppFont.small())
                                             .foregroundColor(Color.black.opacity(0.6))
                                     }
                                     Spacer()
@@ -337,7 +410,7 @@ struct AuthView: View {
                             }) {
                                 ZStack {
                                     Text(authState == .signIn ? "Sign In" : "Sign Up")
-                                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                                        .font(AppFont.buttonText())
                                         .foregroundColor(.white)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 15)
@@ -358,7 +431,7 @@ struct AuthView: View {
                             // Toggle between sign in and sign up
                             HStack {
                                 Text(authState == .signIn ? "Don't have an account?" : "Already have an account?")
-                                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                                    .font(AppFont.caption())
                                     .foregroundColor(Color.black.opacity(0.6))
                                 
                                 Button(action: {
@@ -368,12 +441,14 @@ struct AuthView: View {
                                         showPasswordTooltip = false
                                         showNameTooltip = false
                                         termsAccepted = false
+                                        showPassword = false
                                         
                                         authState = authState == .signIn ? .signUp : .signIn
                                     }
                                 }) {
                                     Text(authState == .signIn ? "Sign Up" : "Sign In")
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .font(AppFont.caption())
+                                        .fontWeight(.semibold)
                                         .foregroundColor(Color.maakoshDeepPink)
                                 }
                             }
@@ -517,44 +592,44 @@ struct TermsView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Group {
                         Text("Terms and Conditions")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .font(AppFont.titleMedium())
                             .foregroundColor(Color.maakoshDeepPink)
                         
                         Text("Last Updated: April 11, 2025")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .font(AppFont.caption())
                             .foregroundColor(Color.black.opacity(0.6))
                         
                         Text("Welcome to MaaKosh")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .font(AppFont.titleSmall())
                         
                         Text("These terms and conditions outline the rules and regulations for the use of MaaKosh App. By accessing this app we assume you accept these terms and conditions. Do not continue to use MaaKosh if you do not agree to take all of the terms and conditions stated on this page.")
-                            .font(.system(size: 16, design: .rounded))
+                            .font(AppFont.body())
                             .foregroundColor(Color.black.opacity(0.8))
                             .lineSpacing(4)
                         
                         Text("1. User Data")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .font(AppFont.titleSmall())
                         
                         Text("MaaKosh collects and stores personal health information to provide you with pregnancy and maternal health tracking services. This information is protected and encrypted. You retain ownership of your personal data and may request export or deletion at any time.")
-                            .font(.system(size: 16, design: .rounded))
+                            .font(AppFont.body())
                             .foregroundColor(Color.black.opacity(0.8))
                             .lineSpacing(4)
                     }
                     
                     Group {
                         Text("2. Health Information")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .font(AppFont.titleSmall())
                         
                         Text("The health guidance provided through MaaKosh is for informational purposes only and is not a substitute for professional medical advice. Always consult with healthcare professionals for medical decisions.")
-                            .font(.system(size: 16, design: .rounded))
+                            .font(AppFont.body())
                             .foregroundColor(Color.black.opacity(0.8))
                             .lineSpacing(4)
                         
                         Text("3. Account Security")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .font(AppFont.titleSmall())
                         
                         Text("You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.")
-                            .font(.system(size: 16, design: .rounded))
+                            .font(AppFont.body())
                             .foregroundColor(Color.black.opacity(0.8))
                             .lineSpacing(4)
                     }
@@ -584,44 +659,44 @@ struct PrivacyView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Group {
                         Text("Privacy Policy")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .font(AppFont.titleMedium())
                             .foregroundColor(Color.maakoshDeepPink)
                         
                         Text("Last Updated: April 11, 2025")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .font(AppFont.caption())
                             .foregroundColor(Color.black.opacity(0.6))
                         
                         Text("Your Privacy Matters")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .font(AppFont.titleSmall())
                         
                         Text("MaaKosh is committed to protecting your personal and health information. This Privacy Policy explains how we collect, use, and safeguard your data when you use our maternal health tracking application.")
-                            .font(.system(size: 16, design: .rounded))
+                            .font(AppFont.body())
                             .foregroundColor(Color.black.opacity(0.8))
                             .lineSpacing(4)
                         
                         Text("1. Information We Collect")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .font(AppFont.titleSmall())
                         
                         Text("We collect information you provide directly, including personal details, health data, pregnancy information, and account credentials. This data is necessary to provide you with personalized maternal health tracking and guidance.")
-                            .font(.system(size: 16, design: .rounded))
+                            .font(AppFont.body())
                             .foregroundColor(Color.black.opacity(0.8))
                             .lineSpacing(4)
                     }
                     
                     Group {
                         Text("2. How We Use Your Information")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .font(AppFont.titleSmall())
                         
                         Text("Your information is used to provide personalized health tracking, send relevant notifications, improve our services, and ensure the security of your account. We do not sell your personal data to third parties.")
-                            .font(.system(size: 16, design: .rounded))
+                            .font(AppFont.body())
                             .foregroundColor(Color.black.opacity(0.8))
                             .lineSpacing(4)
                         
                         Text("3. Data Security")
-                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .font(AppFont.titleSmall())
                         
                         Text("We implement industry-standard security measures to protect your data from unauthorized access or disclosure. Your health information is encrypted both in transit and at rest.")
-                            .font(.system(size: 16, design: .rounded))
+                            .font(AppFont.body())
                             .foregroundColor(Color.black.opacity(0.8))
                             .lineSpacing(4)
                     }
@@ -647,7 +722,7 @@ struct TooltipView: View {
     
     var body: some View {
         Text(text)
-            .font(.system(size: 12))
+            .font(AppFont.small())
             .foregroundColor(.white)
             .padding(10)
             .background(Color.black.opacity(0.7))
@@ -679,7 +754,7 @@ struct AuthTextField: View {
                     isValid = validator!(text)
                 }
             })
-            .font(.system(size: 16, design: .rounded))
+            .font(AppFont.body())
             .keyboardType(keyboardType)
             .autocapitalization(.none)
             .disableAutocorrection(true)
@@ -722,7 +797,7 @@ struct AuthSecureField: View {
                 .frame(width: 20)
             
             SecureField(placeholder, text: $text)
-                .font(.system(size: 16, design: .rounded))
+                .font(AppFont.body())
                 .autocapitalization(.none)
                 .disableAutocorrection(true)
         }
