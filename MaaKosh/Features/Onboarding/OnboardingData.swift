@@ -6,6 +6,45 @@
 //
 
 import SwiftUI
+import FirebaseFirestore
+
+// User profile model to store information after signup
+struct UserProfile: Codable {
+    var age: Int = 0
+    var phoneNumber: String = ""
+    var partnerName: String = ""
+    var lastPeriodDate: Date = Date()
+    var cycleLengthInDays: Int = 28
+    var isProfileComplete: Bool = false
+    
+    // Calculate estimated due date (EDD) - approximately 280 days from last period
+    var estimatedDueDate: Date {
+        Calendar.current.date(byAdding: .day, value: 280, to: lastPeriodDate) ?? Date()
+    }
+    
+    // Calculate current pregnancy week based on last period date
+    var currentPregnancyWeek: Int {
+        let days = Calendar.current.dateComponents([.day], from: lastPeriodDate, to: Date()).day ?? 0
+        return days / 7
+    }
+    
+    // Save user profile to Firestore
+    func saveToFirestore(userId: String, completion: @escaping (Error?) -> Void) {
+        let db = Firestore.firestore()
+        
+        let userData: [String: Any] = [
+            "age": age,
+            "phoneNumber": phoneNumber,
+            "partnerName": partnerName,
+            "lastPeriodDate": lastPeriodDate,
+            "cycleLengthInDays": cycleLengthInDays,
+            "isProfileComplete": true,
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+        
+        db.collection("users").document(userId).updateData(userData, completion: completion)
+    }
+}
 
 // Extension to create Color from hex
 extension Color {

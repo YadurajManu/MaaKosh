@@ -81,6 +81,7 @@ struct AuthView: View {
     @State private var showPrivacySheet = false
     @State private var isLoading = false
     @State private var showPassword = false
+    @State private var isNewUser = false
     
     // Validation states
     @State private var isEmailValid = false
@@ -114,7 +115,11 @@ struct AuthView: View {
     
     var body: some View {
         if isAuthenticated {
-            UserOnboardingView(userId: Auth.auth().currentUser?.uid ?? "")
+            if isNewUser {
+                ProfileSetupView()
+            } else {
+                ContentView()
+            }
         } else {
             ZStack {
                 // Background gradient
@@ -485,8 +490,8 @@ struct AuthView: View {
                 alertMessage = handleAuthError(error)
                 showAlert = true
             } else {
-                // Successfully signed in
-                isAuthenticated = true
+                // Check if profile is complete
+                checkUserProfile(userId: authResult?.user.uid ?? "")
             }
         }
     }
@@ -521,7 +526,8 @@ struct AuthView: View {
             "fullName": fullName,
             "email": email,
             "createdAt": FieldValue.serverTimestamp(),
-            "userId": user.uid
+            "userId": user.uid,
+            "isProfileComplete": false
         ]
         
         db.collection("users").document(user.uid).setData(userData) { error in
@@ -531,9 +537,52 @@ struct AuthView: View {
                 alertMessage = "Account created but failed to save profile: \(error.localizedDescription)"
                 showAlert = true
             } else {
-                // Successfully created user document
+                // Set as new user to trigger profile setup
+                isNewUser = true
                 isAuthenticated = true
             }
+        }
+    }
+    
+    private func checkUserProfile(userId: String) {
+        let db = Firestore.firestore()
+        
+        db.collection("users").document(userId).getDocument { document, error in
+            if let error = error {
+                alertMessage = "Error checking profile: \(error.localizedDescription)"
+                showAlert = true
+                return
+            }
+            
+            if let document = document, document.exists {
+                // Check if profile is complete
+                if let isProfileComplete = document.data()?["isProfileComplete"] as? Bool, isProfileComplete {
+                    // User has completed profile setup
+                    isNewUser = false
+                } else {
+                    // User needs to complete profile setup
+                    isNewUser = true
+                }
+            } else {
+                // No user document, create one and mark as new user
+                let userData: [String: Any] = [
+                    "email": email,
+                    "createdAt": FieldValue.serverTimestamp(),
+                    "userId": userId,
+                    "isProfileComplete": false
+                ]
+                
+                db.collection("users").document(userId).setData(userData) { error in
+                    if let error = error {
+                        print("Error creating user document: \(error.localizedDescription)")
+                    }
+                }
+                
+                isNewUser = true
+            }
+            
+            // Set authenticated state after profile check
+            isAuthenticated = true
         }
     }
     
