@@ -9,6 +9,7 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 import Combine
+import Charts
 
 // Baby Profile Model
 struct BabyProfile: Codable {
@@ -139,6 +140,9 @@ struct NewbornCareView: View {
     
     // Gemini AI Baby Care state
     @State private var showGeminiAICare = false
+    
+    // Add state variable for neonatal patch in the NewbornCareView struct
+    @State private var showVitalMonitoring = false
     
     // Feeding counter for today
     private var todayFeedingCount: Int {
@@ -357,7 +361,8 @@ struct NewbornCareView: View {
     
     private var neonatalPatchCard: some View {
         Button(action: {
-            // Action for neonatal patch
+            // Show vital monitoring view
+            showVitalMonitoring = true
         }) {
             ZStack {
                 RoundedRectangle(cornerRadius: 16)
@@ -385,6 +390,9 @@ struct NewbornCareView: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
+        .sheet(isPresented: $showVitalMonitoring) {
+            VitalMonitoringView(babyName: babyProfile.name)
+        }
     }
     
     private var vaccinationTrackerCard: some View {
@@ -1856,7 +1864,7 @@ struct GeminiAICareView: View {
                         Spacer()
                     }
                     .padding(.horizontal)
-                    .padding(.vertical, 10)
+                    .padding(.top, 8)
                     
                     // Last stats summary
                     if let latestGrowth = growthRecords.first {
@@ -1877,6 +1885,7 @@ struct GeminiAICareView: View {
                         .padding(.bottom, 10)
                     }
                 }
+                .padding(.bottom, 16)
                 .background(Color.white)
                 .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
                 
@@ -2309,6 +2318,521 @@ struct RoundedCorner: Shape {
     func path(in rect: CGRect) -> Path {
         let path = UIBezierPath(roundedRect: rect, byRoundingCorners: corners, cornerRadii: CGSize(width: radius, height: radius))
         return Path(path.cgPath)
+    }
+}
+
+// Vital Monitoring View
+struct VitalMonitoringView: View {
+    @Environment(\.presentationMode) var presentationMode
+    
+    let babyName: String
+    
+    private let thingspeakChannel = "2916872"
+    private let thingspeakAPIKey = "BQFLBK7JHE2VHZH4"
+    
+    @State private var bilirubinData: [VitalDataPoint] = []
+    @State private var temperatureData: [VitalDataPoint] = []
+    @State private var isLoading = true
+    @State private var errorMessage: String = ""
+    @State private var selectedChart: VitalType = .temperature
+    @State private var refreshTimer: Timer?
+    @State private var lastUpdated = Date()
+    
+    // For animation
+    @State private var animateChart = false
+    
+    enum VitalType: String, CaseIterable, Identifiable {
+        case bilirubin = "Bilirubin"
+        case temperature = "Temperature"
+        
+        var id: String { self.rawValue }
+        
+        var color: Color {
+            switch self {
+            case .bilirubin: return .yellow
+            case .temperature: return .red
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .bilirubin: return "drop.fill"
+            case .temperature: return "thermometer"
+            }
+        }
+        
+        var unit: String {
+            switch self {
+            case .bilirubin: return "mg/dL"
+            case .temperature: return "°C"
+            }
+        }
+        
+        var normalRange: String {
+            switch self {
+            case .bilirubin: return "0-5 mg/dL"
+            case .temperature: return "36.5-37.5°C"
+            }
+        }
+        
+        var field: Int {
+            switch self {
+            case .bilirubin: return 1
+            case .temperature: return 2
+            }
+        }
+    }
+    
+    struct VitalDataPoint: Identifiable {
+        let id = UUID()
+        let timestamp: Date
+        let value: Double
+        
+        init(timestamp: Date, value: Double) {
+            self.timestamp = timestamp
+            self.value = value
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Custom header
+                VStack(spacing: 12) {
+                    // Baby info and last updated
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(babyName)'s Vitals")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundColor(.primary)
+                            
+                            Text("Updated \(timeAgo(from: lastUpdated))")
+                                .font(.system(size: 14))
+                                .foregroundColor(.gray)
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            fetchData()
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 18))
+                                .foregroundColor(.pink)
+                                .padding(8)
+                                .background(Circle().fill(Color.pink.opacity(0.1)))
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    
+                    // Chart selector
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 15) {
+                            ForEach(VitalType.allCases) { vitalType in
+                                Button(action: {
+                                    withAnimation {
+                                        selectedChart = vitalType
+                                        animateChart = false
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            animateChart = true
+                                        }
+                                    }
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: vitalType.icon)
+                                            .font(.system(size: 14))
+                                        
+                                        Text(vitalType.rawValue)
+                                            .font(.system(size: 16, weight: .medium))
+                                    }
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 16)
+                                    .background(
+                                        Capsule()
+                                            .fill(selectedChart == vitalType ? 
+                                                  vitalType.color.opacity(0.2) : 
+                                                  Color.gray.opacity(0.1))
+                                    )
+                                    .foregroundColor(selectedChart == vitalType ? 
+                                                    vitalType.color : .gray)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                .padding(.bottom, 16)
+                .background(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+                
+                // Main content
+                if isLoading {
+                    Spacer()
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        
+                        Text("Loading vital data...")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                    Spacer()
+                } else if !errorMessage.isEmpty {
+                    Spacer()
+                    VStack(spacing: 15) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 40))
+                            .foregroundColor(.orange)
+                        
+                        Text("Error loading data")
+                            .font(.headline)
+                        
+                        Text(errorMessage)
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 30)
+                        
+                        Button("Try Again") {
+                            fetchData()
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 10)
+                        .background(Color.pink)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                        .padding(.top, 10)
+                    }
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            // Large chart card
+                            chartCard
+                                .padding(.horizontal)
+                                .padding(.top, 16)
+                            
+                            // Latest readings
+                            latestReadingsView
+                                .padding(.horizontal)
+                            
+                            // Chart details
+                            chartDetailsView
+                                .padding(.horizontal)
+                                .padding(.bottom, 30)
+                        }
+                    }
+                }
+            }
+            .navigationBarHidden(true)
+            .onAppear {
+                fetchData()
+                setupRefreshTimer()
+            }
+            .onDisappear {
+                refreshTimer?.invalidate()
+            }
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    presentationMode.wrappedValue.dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.gray)
+                        .padding(10)
+                        .background(Circle().fill(Color.white))
+                        .shadow(color: Color.black.opacity(0.1), radius: 3)
+                }
+                .padding([.top, .trailing], 16)
+            }
+        }
+    }
+    
+    // Large chart view
+    private var chartCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Past 60 Minutes")
+                .font(.headline)
+                .foregroundColor(.gray)
+            
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+                
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack {
+                        Image(systemName: selectedChart.icon)
+                            .font(.system(size: 18))
+                            .foregroundColor(selectedChart.color)
+                        
+                        Text(selectedChart.rawValue)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(.primary)
+                        
+                        Spacer()
+                        
+                        Text(selectedChart.unit)
+                            .font(.system(size: 14))
+                            .foregroundColor(.gray)
+                    }
+                    
+                    // Chart view
+                    chartView
+                        .frame(height: 250)
+                        .id(selectedChart) // Force redraw when chart type changes
+                }
+                .padding()
+            }
+        }
+    }
+    
+    // Chart view using Swift Charts
+    private var chartView: some View {
+        let data = selectedChart == .bilirubin ? bilirubinData : temperatureData
+        
+        return Chart(data) { dataPoint in
+            LineMark(
+                x: .value("Time", dataPoint.timestamp),
+                y: .value(selectedChart.rawValue, dataPoint.value)
+            )
+            .foregroundStyle(selectedChart.color.gradient)
+            .interpolationMethod(.catmullRom)
+            
+            AreaMark(
+                x: .value("Time", dataPoint.timestamp),
+                y: .value(selectedChart.rawValue, dataPoint.value)
+            )
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [
+                        selectedChart.color.opacity(0.3),
+                        selectedChart.color.opacity(0.1),
+                        selectedChart.color.opacity(0.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .interpolationMethod(.catmullRom)
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading)
+        }
+        .chartXAxis {
+            AxisMarks(preset: .extended, position: .bottom) {
+                AxisGridLine()
+                AxisTick()
+                AxisValueLabel(format: .dateTime.hour().minute())
+            }
+        }
+        .scaleEffect(y: animateChart ? 1 : 0.8)
+        .opacity(animateChart ? 1 : 0)
+        .animation(.easeOut(duration: 0.5), value: animateChart)
+    }
+    
+    // Latest reading card view
+    private var latestReadingsView: some View {
+        HStack(spacing: 15) {
+            // Bilirubin card
+            createVitalCard(
+                type: .bilirubin,
+                value: bilirubinData.last?.value ?? 0.0,
+                isSelected: selectedChart == .bilirubin
+            )
+            
+            // Temperature card
+            createVitalCard(
+                type: .temperature,
+                value: temperatureData.last?.value ?? 0.0,
+                isSelected: selectedChart == .temperature
+            )
+        }
+    }
+    
+    private func createVitalCard(type: VitalType, value: Double, isSelected: Bool) -> some View {
+        Button(action: {
+            withAnimation {
+                selectedChart = type
+                animateChart = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    animateChart = true
+                }
+            }
+        }) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: type.icon)
+                        .font(.system(size: 16))
+                        .foregroundColor(type.color)
+                    
+                    Text(type.rawValue)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+                
+                HStack(alignment: .firstTextBaseline) {
+                    Text(String(format: "%.1f", value))
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(type.color)
+                    
+                    Text(type.unit)
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                }
+                
+                Text("Normal: \(type.normalRange)")
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(isSelected ? type.color.opacity(0.1) : Color.white)
+                    .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    // Chart details view
+    private var chartDetailsView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("About \(selectedChart.rawValue) Monitoring")
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            HStack(alignment: .top, spacing: 15) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(selectedChart.color)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(selectedChart == .bilirubin ?
+                         "Bilirubin is a yellow substance in your blood. Too much can cause jaundice in newborns. The patch measures transcutaneous bilirubin levels non-invasively." :
+                            "Temperature monitoring helps detect fever or hypothermia early. Our sensor provides continuous temperature readings without disturbing your baby's sleep.")
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                    
+                    Text("Normal Range: \(selectedChart.normalRange)")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+            )
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func setupRefreshTimer() {
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+            fetchData()
+        }
+    }
+    
+    private func fetchData() {
+        isLoading = true
+        errorMessage = ""
+        
+        // Fetch bilirubin data
+        fetchThingSpeakData(field: VitalType.bilirubin.field) { result in
+            switch result {
+            case .success(let data):
+                self.bilirubinData = data
+                
+                // Fetch temperature data after bilirubin succeeds
+                fetchThingSpeakData(field: VitalType.temperature.field) { result in
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        
+                        switch result {
+                        case .success(let data):
+                            self.temperatureData = data
+                            self.lastUpdated = Date()
+                            self.animateChart = true
+                        case .failure(let error):
+                            self.errorMessage = error.localizedDescription
+                        }
+                    }
+                }
+                
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+    
+    private func fetchThingSpeakData(field: Int, completion: @escaping (Result<[VitalDataPoint], Error>) -> Void) {
+        let urlString = "https://api.thingspeak.com/channels/\(thingspeakChannel)/fields/\(field).json?api_key=\(thingspeakAPIKey)&results=60"
+        
+        guard let url = URL(string: urlString) else {
+            completion(.failure(NSError(domain: "VitalMonitoring", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(NSError(domain: "VitalMonitoring", code: 2, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
+                return
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let feeds = json["feeds"] as? [[String: Any]] {
+                    
+                    var dataPoints: [VitalDataPoint] = []
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+                    
+                    for feed in feeds {
+                        if let createdAt = feed["created_at"] as? String,
+                           let date = dateFormatter.date(from: createdAt),
+                           let fieldValueString = feed["field\(field)"] as? String,
+                           let fieldValue = Double(fieldValueString) {
+                            
+                            let dataPoint = VitalDataPoint(timestamp: date, value: fieldValue)
+                            dataPoints.append(dataPoint)
+                        }
+                    }
+                    
+                    completion(.success(dataPoints))
+                } else {
+                    completion(.failure(NSError(domain: "VitalMonitoring", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to parse data"])))
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
+    private func timeAgo(from date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        let components = calendar.dateComponents([.minute, .second], from: date, to: now)
+        
+        if let minutes = components.minute, minutes > 0 {
+            return "\(minutes) min ago"
+        } else if let seconds = components.second {
+            return "\(seconds) sec ago"
+        } else {
+            return "just now"
+        }
     }
 }
 
