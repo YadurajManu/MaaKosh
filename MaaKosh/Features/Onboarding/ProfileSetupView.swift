@@ -163,7 +163,7 @@ struct ProfileSetupView: View {
             showingTooltip = nil
         }
         .fullScreenCover(isPresented: $navigateToHome) {
-            ContentView()
+            DashboardView()
         }
     }
     

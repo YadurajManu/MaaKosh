@@ -118,7 +118,7 @@ struct AuthView: View {
             if isNewUser {
                 ProfileSetupView()
             } else {
-                ContentView()
+                DashboardView()
             }
         } else {
             ZStack {
