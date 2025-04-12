@@ -2163,20 +2163,21 @@ struct GeminiAICareView: View {
             vaccinationInfo = "There are \(upcomingVaccinations.count) vaccinations scheduled in the next month. "
         }
         
-        // Create prompt
+        // Create prompt with instructions for brevity
         let prompt = """
-        You are a helpful assistant for new parents. Give personalized baby care advice for a \(ageInfo) infant named \(name).
+        You are an assistant for new parents. About the \(ageInfo) infant named \(name):
         \(growthInfo)
         \(feedingInfo)
         \(vaccinationInfo)
         
-        Provide 3-4 key care recommendations specifically tailored to a \(ageInfo) baby. Include tips on:
-        1. Developmental activities appropriate for this age
-        2. Nutrition and feeding guidance
-        3. Sleep recommendations
-        4. Health and safety considerations
+        Provide 2-3 essential care tips for a \(ageInfo) baby.
         
-        Keep your response friendly, reassuring, and concise (around 250 words). Format with bullet points and emojis for readability.
+        IMPORTANT: 
+        - Each tip must be 1-2 sentences only
+        - Total response under 75 words
+        - No greetings or explanations
+        - Be extremely direct and practical
+        - Use bullet points only
         """
         
         // Call Gemini API with this context
@@ -2200,24 +2201,19 @@ struct GeminiAICareView: View {
         let ageInfo = babyProfile.ageDescription
         let name = babyProfile.name.isEmpty ? "the baby" : babyProfile.name
         
-        // Include previous messages for context
-        var conversationHistory = ""
-        for message in messages.prefix(6) { // Limit to prevent token overflow
-            let role = message.isUser ? "User" : "Assistant"
-            conversationHistory += "\(role): \(message.content)\n\n"
-        }
-        
-        // Create prompt
+        // Create prompt with instructions for brevity
         let prompt = """
-        You are a helpful assistant for new parents. The baby is \(ageInfo) and named \(name).
+        You are a baby care assistant. The baby is \(ageInfo) and named \(name).
         
-        Recent conversation:
-        \(conversationHistory)
+        User's question: \(userMessage)
         
-        User's latest question: \(userMessage)
-        
-        Provide a helpful, personalized response about baby care. Keep your answer concise and friendly.
-        Format with bullet points where appropriate and include emojis for readability.
+        IMPORTANT INSTRUCTIONS:
+        - Answer in 2-3 sentences maximum
+        - Be extremely concise (under 50 words total)
+        - Focus only on answering the specific question
+        - No greetings or explanations
+        - Use bullet points if listing items
+        - Be direct and practical
         """
         
         // Call Gemini API

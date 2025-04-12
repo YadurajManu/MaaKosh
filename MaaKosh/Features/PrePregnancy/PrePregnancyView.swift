@@ -49,6 +49,9 @@ struct PrePregnancyView: View {
     @State private var showInsightsSummary = true
     @State private var insightCategories: [String: Int] = [:]
     
+    // Add state variable for AI Guide
+    @State private var showAIGuide = false
+    
     var body: some View {
         ZStack {
             // Main content
@@ -75,6 +78,40 @@ struct PrePregnancyView: View {
                     sectionButton(title: "Conception Attempts", action: {
                         navigateToConceptionAttempts = true
                     })
+                    
+                    // AI Fertility Guide
+                    Button(action: {
+                        showAIGuide = true
+                    }) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.purple.opacity(0.7))
+                            
+                            HStack {
+                                Image(systemName: "brain")
+                                    .font(.system(size: 30))
+                                    .foregroundColor(.white)
+                                    .padding(.trailing, 10)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("AI Fertility Guide")
+                                        .font(.system(size: 20, weight: .medium))
+                                        .foregroundColor(.white)
+                                    
+                                    Text("Personalized advice for conception")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                                
+                                Spacer()
+                            }
+                            .padding()
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .sheet(isPresented: $showAIGuide) {
+                        GeminiAIFertilityGuideView(cycleData: cycleData, cycleLength: cycleLength, periodLength: periodLength, cycleEvents: cycleEvents)
+                    }
                     
                     // Wellness Tips & Advice
                     wellnessTipsCard
@@ -2264,6 +2301,523 @@ struct CycleSummary {
     
     var isEmpty: Bool {
         return avgCycleLength == 0 && currentPhase == "Unknown"
+    }
+}
+
+// Add the GeminiAIFertilityGuideView at the end of the file
+// AI Fertility Guide View
+struct GeminiAIFertilityGuideView: View {
+    @Environment(\.presentationMode) var presentationMode
+    
+    let cycleData: [Date: CycleDayType]
+    let cycleLength: Int
+    let periodLength: Int
+    let cycleEvents: [CycleEvent]
+    
+    private let geminiAPIKey = "AIzaSyCueBkZoml0YMVXHxtMZeE7Xn-0iqDRpGU"
+    
+    @State private var messages: [ChatMessage] = []
+    @State private var userInput: String = ""
+    @State private var isLoading: Bool = false
+    @State private var showWelcomePrompt: Bool = true
+    @State private var errorMessage: String = ""
+    
+    struct ChatMessage: Identifiable, Equatable {
+        let id = UUID()
+        let content: String
+        let isUser: Bool
+        let timestamp = Date()
+        
+        static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
+            lhs.id == rhs.id && 
+            lhs.content == rhs.content && 
+            lhs.isUser == rhs.isUser
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Custom header
+                VStack(spacing: 12) {
+                    // Header info
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Fertility Assistant")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundColor(.primary)
+                            
+                            Text("Personalized conception guidance")
+                                .font(.system(size: 14))
+                                .foregroundColor(.gray)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    
+                    // Cycle stats summary
+                    HStack(spacing: 12) {
+                        statsItem(value: "\(cycleLength)", title: "Cycle Length", icon: "calendar", color: .purple)
+                        
+                        statsItem(value: "\(periodLength)", title: "Period Days", icon: "drop.fill", color: .red)
+                        
+                        if let lastPeriod = findLastPeriodDate() {
+                            let daysSince = Calendar.current.dateComponents([.day], from: lastPeriod, to: Date()).day ?? 0
+                            statsItem(value: "\(daysSince)", title: "Days Since Period", icon: "clock", color: .blue)
+                        }
+                        
+                        statsItem(value: "\(cycleEvents.count)", title: "Tracked Events", icon: "chart.bar.fill", color: .green)
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
+                }
+                .background(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+                
+                // Messages
+                ScrollViewReader { scrollView in
+                    ScrollView {
+                        LazyVStack(spacing: 15) {
+                            if showWelcomePrompt {
+                                // Welcome prompt
+                                welcomePrompt
+                            }
+                            
+                            ForEach(messages) { message in
+                                chatMessageView(message: message)
+                            }
+                            
+                            if isLoading {
+                                loadingIndicator
+                            }
+                            
+                            // Spacer message to help with scrolling
+                            Text("")
+                                .id("bottomMessage")
+                                .padding(.top, 10)
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 10)
+                    }
+                    .onChange(of: messages) { _ in
+                        // Scroll to bottom when messages change
+                        withAnimation {
+                            scrollView.scrollTo("bottomMessage", anchor: .bottom)
+                        }
+                    }
+                }
+                
+                // Error message
+                if !errorMessage.isEmpty {
+                    Text(errorMessage)
+                        .font(.system(size: 14))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 8)
+                        .background(Color.red.opacity(0.8))
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                        .padding(.vertical, 5)
+                }
+                
+                // Input field
+                HStack {
+                    TextField("Ask about fertility or conception...", text: $userInput)
+                        .padding(12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(20)
+                        .disabled(isLoading)
+                    
+                    Button(action: sendMessage) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundColor(.purple)
+                    }
+                    .disabled(userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: -2)
+            }
+            .navigationTitle("AI Fertility Guide")
+            .navigationBarItems(trailing: Button("Close") {
+                presentationMode.wrappedValue.dismiss()
+            })
+            .onAppear {
+                generateInitialRecommendation()
+            }
+        }
+    }
+    
+    private var welcomePrompt: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Text("👋 Welcome to Your Fertility Guide")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.purple)
+            
+            Text("I'm your personal fertility assistant. Here are some things you can ask me:")
+                .font(.system(size: 16))
+                .foregroundColor(.primary)
+            
+            VStack(alignment: .leading, spacing: 10) {
+                suggestionButton("When is my fertile window?")
+                suggestionButton("How can I improve my chances of conception?")
+                suggestionButton("What lifestyle changes should I make?")
+                suggestionButton("What fertility signs should I track?")
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(0.1)))
+    }
+    
+    private func suggestionButton(_ text: String) -> some View {
+        Button(action: {
+            userInput = text
+            sendMessage()
+        }) {
+            HStack {
+                Text(text)
+                    .font(.system(size: 14))
+                    .foregroundColor(.purple)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundColor(.purple.opacity(0.7))
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.purple.opacity(0.08))
+            )
+        }
+    }
+    
+    private func statsItem(value: String, title: String, icon: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.primary)
+            
+            Text(title)
+                .font(.system(size: 10))
+                .foregroundColor(.gray)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(color.opacity(0.1))
+        .cornerRadius(8)
+    }
+    
+    private func chatMessageView(message: ChatMessage) -> some View {
+        HStack {
+            if message.isUser {
+                Spacer()
+                
+                Text(message.content)
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 10)
+                    .background(Color.purple.opacity(0.8))
+                    .foregroundColor(.white)
+                    .cornerRadius(18)
+                    .cornerRadius(18, corners: [.topRight, .bottomLeft, .bottomRight])
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "brain")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.purple)
+                            .clipShape(Circle())
+                        
+                        Text(message.content)
+                            .padding(.horizontal, 15)
+                            .padding(.vertical, 10)
+                            .background(Color(.systemGray6))
+                            .foregroundColor(.primary)
+                            .cornerRadius(18)
+                            .cornerRadius(18, corners: [.topLeft, .topRight, .bottomRight])
+                    }
+                    
+                    Text(formatTimestamp(message.timestamp))
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray)
+                        .padding(.leading, 40)
+                }
+                
+                Spacer()
+            }
+        }
+    }
+    
+    private var loadingIndicator: some View {
+        HStack {
+            HStack {
+                Circle()
+                    .fill(Color.purple.opacity(0.5))
+                    .frame(width: 10, height: 10)
+                    .scaleEffect(1.0)
+                    .opacity(0.5)
+                
+                Circle()
+                    .fill(Color.purple.opacity(0.7))
+                    .frame(width: 10, height: 10)
+                    .scaleEffect(1.0)
+                    .opacity(0.7)
+                
+                Circle()
+                    .fill(Color.purple)
+                    .frame(width: 10, height: 10)
+                    .scaleEffect(1.0)
+                    .opacity(1.0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 15)
+            .background(Color(.systemGray6))
+            .cornerRadius(18)
+            
+            Spacer()
+        }
+    }
+    
+    private func formatTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: date)
+    }
+    
+    private func sendMessage() {
+        guard !userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        
+        // Add user message
+        let userMessage = ChatMessage(content: userInput, isUser: true)
+        messages.append(userMessage)
+        
+        // Clear input and hide welcome prompt
+        let sentMessage = userInput
+        userInput = ""
+        showWelcomePrompt = false
+        
+        // Show loading
+        isLoading = true
+        
+        // Generate AI response
+        generateResponse(for: sentMessage)
+    }
+    
+    private func generateInitialRecommendation() {
+        isLoading = true
+        
+        // Create context about the cycle data
+        var cycleContext = "Cycle length: \(cycleLength) days, Period length: \(periodLength) days."
+        
+        // Find last period date
+        if let lastPeriod = findLastPeriodDate() {
+            let daysSince = Calendar.current.dateComponents([.day], from: lastPeriod, to: Date()).day ?? 0
+            cycleContext += " Last period started \(daysSince) days ago."
+            
+            // Calculate fertile window
+            let fertileStart = Calendar.current.date(byAdding: .day, value: cycleLength - 19, to: lastPeriod) ?? Date()
+            let fertileEnd = Calendar.current.date(byAdding: .day, value: cycleLength - 10, to: lastPeriod) ?? Date()
+            
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            let fertileStartStr = formatter.string(from: fertileStart)
+            let fertileEndStr = formatter.string(from: fertileEnd)
+            
+            let now = Date()
+            if fertileStart <= now && now <= fertileEnd {
+                cycleContext += " Currently in fertile window (\(fertileStartStr) to \(fertileEndStr))."
+            } else if now < fertileStart {
+                cycleContext += " Next fertile window from \(fertileStartStr) to \(fertileEndStr)."
+            } else {
+                // Calculate next period and fertile window
+                let nextPeriod = Calendar.current.date(byAdding: .day, value: cycleLength, to: lastPeriod) ?? Date()
+                let nextFertileStart = Calendar.current.date(byAdding: .day, value: cycleLength - 19, to: nextPeriod) ?? Date()
+                let nextFertileEnd = Calendar.current.date(byAdding: .day, value: cycleLength - 10, to: nextPeriod) ?? Date()
+                
+                let nextPeriodStr = formatter.string(from: nextPeriod)
+                let nextFertileStartStr = formatter.string(from: nextFertileStart)
+                let nextFertileEndStr = formatter.string(from: nextFertileEnd)
+                
+                cycleContext += " Next period expected around \(nextPeriodStr). Next fertile window from \(nextFertileStartStr) to \(nextFertileEndStr)."
+            }
+        } else {
+            cycleContext += " No recent period data available."
+        }
+        
+        // Add conception attempts info - fix the filter method
+        let intercourseEvents = cycleEvents.filter { event in 
+            // Update this when there are proper types for intercourse and insemination
+            return event.notes.lowercased().contains("intercourse") || 
+                   event.notes.lowercased().contains("insemination")
+        }
+        
+        if !intercourseEvents.isEmpty {
+            cycleContext += " Has recorded \(intercourseEvents.count) conception attempts in the last 3 months."
+        }
+        
+        // Create prompt with instructions for brevity
+        let prompt = """
+        You are a helpful fertility assistant for someone trying to conceive. Here's their cycle information:
+        \(cycleContext)
+        
+        Provide 2-3 concise recommendations to help them optimize their chances of conception. Be extremely brief and direct.
+        
+        IMPORTANT: Keep each point to 1-2 sentences maximum. Total response should be under 100 words.
+        Use bullet points and be straightforward. Avoid explanations, greetings, or unnecessary text.
+        """
+        
+        // Call Gemini API with this context
+        getGeminiResponse(prompt: prompt) { result in
+            DispatchQueue.main.async {
+                isLoading = false
+                
+                switch result {
+                case .success(let response):
+                    let aiMessage = ChatMessage(content: response, isUser: false)
+                    messages.append(aiMessage)
+                case .failure(let error):
+                    errorMessage = "Sorry, there was an error: \(error.localizedDescription). Please try again."
+                }
+            }
+        }
+    }
+    
+    private func generateResponse(for userMessage: String) {
+        // Create context with previous conversation and cycle info
+        var cycleContext = "Cycle length: \(cycleLength) days, Period length: \(periodLength) days."
+        
+        if let lastPeriod = findLastPeriodDate() {
+            let daysSince = Calendar.current.dateComponents([.day], from: lastPeriod, to: Date()).day ?? 0
+            cycleContext += " Last period started \(daysSince) days ago."
+        }
+        
+        // Include previous messages for context
+        var conversationHistory = ""
+        for message in messages.prefix(6) { // Limit to prevent token overflow
+            let role = message.isUser ? "User" : "Assistant"
+            conversationHistory += "\(role): \(message.content)\n\n"
+        }
+        
+        // Create prompt with instructions for brevity
+        let prompt = """
+        You are a helpful fertility assistant. Their cycle information:
+        \(cycleContext)
+        
+        Recent conversation:
+        \(conversationHistory)
+        
+        User's latest question: \(userMessage)
+        
+        IMPORTANT INSTRUCTIONS:
+        - Answer in 3 sentences or less (absolute maximum)
+        - Be extremely concise and direct
+        - Focus only on answering the specific question
+        - No greetings, no explanations, just the answer
+        - Total response should be under 50 words
+        - Use bullet points if appropriate
+        """
+        
+        // Call Gemini API
+        getGeminiResponse(prompt: prompt) { result in
+            DispatchQueue.main.async {
+                isLoading = false
+                
+                switch result {
+                case .success(let response):
+                    let aiMessage = ChatMessage(content: response, isUser: false)
+                    messages.append(aiMessage)
+                case .failure(let error):
+                    errorMessage = "Sorry, there was an error: \(error.localizedDescription). Please try again."
+                }
+            }
+        }
+    }
+    
+    private func findLastPeriodDate() -> Date? {
+        // Find the most recent date marked as period
+        let periodDates = cycleData.filter { $0.value == .period }.keys.sorted(by: >)
+        return periodDates.first
+    }
+    
+    private func getGeminiResponse(prompt: String, completion: @escaping (Result<String, Error>) -> Void) {
+        // Gemini API endpoint for Gemini 1.5 Pro
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=\(geminiAPIKey)"
+        
+        guard let url = URL(string: urlString) else {
+            completion(.failure(NSError(domain: "GeminiAPI", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+        
+        // Create request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Create payload
+        let payload: [String: Any] = [
+            "contents": [
+                ["role": "user", "parts": [["text": prompt]]]
+            ]
+        ]
+        
+        // Serialize to JSON
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        
+        // Make request
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(NSError(domain: "GeminiAPI", code: 0, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
+                return
+            }
+            
+            // Parse response
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let candidates = json["candidates"] as? [[String: Any]],
+                   let firstCandidate = candidates.first,
+                   let content = firstCandidate["content"] as? [String: Any],
+                   let parts = content["parts"] as? [[String: Any]],
+                   let firstPart = parts.first,
+                   let text = firstPart["text"] as? String {
+                    completion(.success(text))
+                } else {
+                    // Try to get error message
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let error = json["error"] as? [String: Any],
+                       let message = error["message"] as? String {
+                        completion(.failure(NSError(domain: "GeminiAPI", code: 0, userInfo: [NSLocalizedDescriptionKey: message])))
+                    } else {
+                        completion(.failure(NSError(domain: "GeminiAPI", code: 0, userInfo: [NSLocalizedDescriptionKey: "Could not parse response"])))
+                    }
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
     }
 }
 

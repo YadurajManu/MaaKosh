@@ -8,6 +8,7 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import Security
 
 // Typography constants for consistent styling
 struct AppFont {
@@ -82,6 +83,7 @@ struct AuthView: View {
     @State private var isLoading = false
     @State private var showPassword = false
     @State private var isNewUser = false
+    @State private var rememberMe = false
     
     // Validation states
     @State private var isEmailValid = false
@@ -386,6 +388,39 @@ struct AuthView: View {
                                 // This section has been removed to show terms only on sign-up
                             }
                             
+                            // Remember Me option (only for sign in)
+                            if authState == .signIn {
+                                HStack {
+                                    Button(action: {
+                                        rememberMe.toggle()
+                                    }) {
+                                        HStack(spacing: 10) {
+                                            ZStack {
+                                                RoundedRectangle(cornerRadius: 3)
+                                                    .stroke(Color.maakoshDeepPink, lineWidth: 1.5)
+                                                    .frame(width: 18, height: 18)
+                                                
+                                                if rememberMe {
+                                                    RoundedRectangle(cornerRadius: 2)
+                                                        .fill(Color.maakoshDeepPink)
+                                                        .frame(width: 12, height: 12)
+                                                }
+                                            }
+                                            
+                                            Text("Remember me")
+                                                .font(AppFont.caption())
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    // Keep the "Forgot Password?" link if it exists
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                            }
+                            
                             // Main action button (Sign In/Sign Up)
                             Button(action: {
                                 if isFormValid {
@@ -458,6 +493,9 @@ struct AuthView: View {
             .sheet(isPresented: $showPrivacySheet) {
                 PrivacyView()
             }
+            .onAppear {
+                loadSavedCredentials()
+            }
         }
     }
     
@@ -466,15 +504,28 @@ struct AuthView: View {
     private func signIn() {
         isLoading = true
         
-        Auth.auth().signIn(withEmail: email, password: password) { authResult, error in
+        Auth.auth().signIn(withEmail: email, password: password) { result, error in
             isLoading = false
             
             if let error = error {
                 alertMessage = handleAuthError(error)
                 showAlert = true
+                return
+            }
+            
+            // If remember me is checked, save credentials
+            if rememberMe {
+                saveCredentials()
             } else {
-                // Check if profile is complete
-                checkUserProfile(userId: authResult?.user.uid ?? "")
+                // Clear any previously saved credentials
+                clearSavedCredentials()
+            }
+            
+            // Determine if this is a new user
+            if let user = Auth.auth().currentUser {
+                checkUserProfile(userId: user.uid)
+            } else {
+                isAuthenticated = true
             }
         }
     }
@@ -611,6 +662,77 @@ struct AuthView: View {
         default:
             return "Authentication error: \(error.localizedDescription)"
         }
+    }
+    
+    // Add these new helper functions for credential management
+    
+    private func saveCredentials() {
+        // Save email to UserDefaults
+        UserDefaults.standard.set(email, forKey: "savedEmail")
+        UserDefaults.standard.set(true, forKey: "rememberMe")
+        
+        // Save password to Keychain
+        let passwordData = password.data(using: .utf8)!
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "MaaKoshUserPassword",
+            kSecValueData as String: passwordData
+        ]
+        
+        // First delete any existing password
+        SecItemDelete(query as CFDictionary)
+        
+        // Then add the new password
+        let status = SecItemAdd(query as CFDictionary, nil)
+        print("Password saved with status: \(status)")
+    }
+    
+    private func loadSavedCredentials() {
+        // Only load if remember me was enabled
+        guard UserDefaults.standard.bool(forKey: "rememberMe") else { return }
+        
+        // Load email from UserDefaults
+        if let savedEmail = UserDefaults.standard.string(forKey: "savedEmail") {
+            email = savedEmail
+            
+            // Update email validation state
+            let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+            let emailPredicate = NSPredicate(format:"SELF MATCHES %@", emailRegex)
+            isEmailValid = emailPredicate.evaluate(with: email) && email.count > 5
+        }
+        
+        // Load password from Keychain
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "MaaKoshUserPassword",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        if status == errSecSuccess, let passwordData = result as? Data, 
+           let savedPassword = String(data: passwordData, encoding: .utf8) {
+            password = savedPassword
+        }
+        
+        // Set remember me state
+        rememberMe = true
+    }
+    
+    private func clearSavedCredentials() {
+        // Remove email from UserDefaults
+        UserDefaults.standard.removeObject(forKey: "savedEmail")
+        UserDefaults.standard.set(false, forKey: "rememberMe")
+        
+        // Remove password from Keychain
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "MaaKoshUserPassword"
+        ]
+        
+        SecItemDelete(query as CFDictionary)
     }
 }
 
