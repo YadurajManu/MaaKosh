@@ -15,12 +15,16 @@ struct Dashboard: View {
     @State private var isLoading = true
     @State private var navigateToPrePregnancy = false
     @State private var navigateToPregnancy = false
+    @State private var navigateToNewbornCare = false
     
     var body: some View {
         ScrollView {
             VStack(spacing: 25) {
                 // Welcome header card
                 welcomeHeader
+                
+                // Emergency Contacts
+                DashboardEmergencyContacts()
                 
                 // Care Categories section
                 categoriesSection
@@ -43,6 +47,11 @@ struct Dashboard: View {
         .fullScreenCover(isPresented: $navigateToPregnancy) {
             NavigationView {
                 PregnancyView()
+            }
+        }
+        .fullScreenCover(isPresented: $navigateToNewbornCare) {
+            NavigationView {
+                NewbornCareView()
             }
         }
     }
@@ -110,7 +119,7 @@ struct Dashboard: View {
                 description: "Essential information for baby's health",
                 color: Color.cyan.opacity(0.15),
                 action: {
-                    // Will implement in the future
+                    navigateToNewbornCare = true
                 }
             )
         }

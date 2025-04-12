@@ -38,6 +38,33 @@ struct MedicalRecord: Identifiable, Codable, Equatable {
     }
 }
 
+// Emergency Contact Model
+struct EmergencyContact: Identifiable, Codable, Equatable {
+    var id: String = UUID().uuidString
+    var name: String
+    var relationship: String
+    var phoneNumber: String
+    var isEmergencyContact: Bool = true
+    var createdAt: Date = Date()
+    
+    // For Firestore conversion
+    var dictionary: [String: Any] {
+        return [
+            "id": id,
+            "name": name,
+            "relationship": relationship,
+            "phoneNumber": phoneNumber,
+            "isEmergencyContact": isEmergencyContact,
+            "createdAt": createdAt
+        ]
+    }
+    
+    // Add Equatable implementation
+    static func == (lhs: EmergencyContact, rhs: EmergencyContact) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
+
 struct ProfileView: View {
     @State private var userProfile = UserProfile()
     @State private var isLoading = false
@@ -61,6 +88,12 @@ struct ProfileView: View {
     @State private var medicalRecords: [MedicalRecord] = []
     @State private var showAddMedicalRecord = false
     @State private var isLoadingRecords = false
+    
+    // Add models and state for emergency contacts
+    @State private var emergencyContacts: [EmergencyContact] = []
+    @State private var showAddEmergencyContact = false
+    @State private var isLoadingContacts = false
+    @State private var selectedEmergencyContact: EmergencyContact?
     
     var body: some View {
         NavigationView {
@@ -120,6 +153,15 @@ struct ProfileView: View {
                     isPresented: $showAddMedicalRecord, 
                     onSave: addMedicalRecord,
                     onDelete: deleteMedicalRecord
+                )
+            }
+            // Add sheet for emergency contact form
+            .sheet(isPresented: $showAddEmergencyContact) {
+                EmergencyContactFormView(
+                    isPresented: $showAddEmergencyContact,
+                    contact: selectedEmergencyContact,
+                    onSave: addEmergencyContact,
+                    onDelete: deleteEmergencyContact
                 )
             }
         }
@@ -189,6 +231,9 @@ struct ProfileView: View {
             // Pregnancy Information
             pregnancyInfoSection
             
+            // Emergency Contacts Section
+            emergencyContactsSection
+            
             // Medical History
             medicalHistorySection
             
@@ -203,6 +248,7 @@ struct ProfileView: View {
             }
             loadUserProfile()
             loadMedicalRecords()
+            loadEmergencyContacts()
         }
     }
     
@@ -279,6 +325,129 @@ struct ProfileView: View {
                 }
             }
             .padding(.vertical, 5)
+        }
+    }
+    
+    // Emergency contacts section
+    private var emergencyContactsSection: some View {
+        ProfileCard(icon: "phone.fill.badge.plus", title: "Emergency Contacts") {
+            VStack(spacing: 0) {
+                if emergencyContacts.isEmpty {
+                    emptyEmergencyContactsView
+                } else {
+                    emergencyContactsList
+                }
+                
+                // Add contact button
+                addEmergencyContactButton
+            }
+        }
+    }
+    
+    // Empty emergency contacts view
+    private var emptyEmergencyContactsView: some View {
+        HStack {
+            Text("No emergency contacts added")
+                .font(AppFont.body())
+                .foregroundColor(.secondary)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+            
+            Spacer()
+        }
+    }
+    
+    // Emergency contacts list
+    private var emergencyContactsList: some View {
+        let sortedContacts = emergencyContacts.sorted(by: { $0.createdAt > $1.createdAt })
+        return ForEach(sortedContacts) { contact in
+            Group {
+                if contact != sortedContacts.first {
+                    Divider().background(Color.gray.opacity(0.1))
+                }
+                
+                Button(action: {
+                    // Show edit view for this contact
+                    selectedEmergencyContact = contact
+                    showAddEmergencyContact = true
+                }) {
+                    emergencyContactRow(contact)
+                }
+            }
+        }
+    }
+    
+    // Individual emergency contact row
+    private func emergencyContactRow(_ contact: EmergencyContact) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(contact.name)
+                    .font(AppFont.body())
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                
+                Spacer()
+                
+                // Relationship indicator
+                Text(contact.relationship)
+                    .font(AppFont.small())
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.maakoshDeepPink)
+                    .cornerRadius(10)
+            }
+            
+            HStack {
+                Text(contact.phoneNumber)
+                    .font(AppFont.caption())
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Button(action: {
+                    callEmergencyContact(contact.phoneNumber)
+                }) {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color.maakoshDeepPink)
+                        .padding(6)
+                        .background(Color.maakoshLightPink.opacity(0.2))
+                        .clipShape(Circle())
+                }
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color.gray.opacity(0.5))
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .contentShape(Rectangle())
+    }
+    
+    // Add emergency contact button
+    private var addEmergencyContactButton: some View {
+        Button(action: {
+            selectedEmergencyContact = nil
+            showAddEmergencyContact = true
+        }) {
+            HStack {
+                Spacer()
+                
+                Text("Add Emergency Contact")
+                    .font(AppFont.body())
+                    .foregroundColor(Color.maakoshDeepPink)
+                
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(Color.maakoshDeepPink)
+                
+                Spacer()
+            }
+            .padding(.vertical, 12)
+            .background(Color.maakoshLightPink.opacity(0.1))
         }
     }
     
@@ -785,6 +954,131 @@ struct ProfileView: View {
         }
         .padding(.top, 30)
         .padding(.bottom, 10)
+    }
+    
+    private func loadEmergencyContacts() {
+        guard let user = Auth.auth().currentUser else {
+            return
+        }
+        
+        isLoadingContacts = true
+        
+        let db = Firestore.firestore()
+        db.collection("users").document(user.uid).collection("emergencyContacts")
+            .order(by: "createdAt", descending: true)
+            .getDocuments { snapshot, error in
+                isLoadingContacts = false
+                
+                if let error = error {
+                    alertMessage = "Failed to load emergency contacts: \(error.localizedDescription)"
+                    showAlert = true
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    return
+                }
+                
+                var contacts: [EmergencyContact] = []
+                
+                for document in documents {
+                    let data = document.data()
+                    
+                    guard let id = data["id"] as? String,
+                          let name = data["name"] as? String,
+                          let relationship = data["relationship"] as? String,
+                          let phoneNumber = data["phoneNumber"] as? String,
+                          let isEmergencyContact = data["isEmergencyContact"] as? Bool else {
+                        continue
+                    }
+                    
+                    let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                    
+                    let contact = EmergencyContact(
+                        id: id,
+                        name: name,
+                        relationship: relationship,
+                        phoneNumber: phoneNumber,
+                        isEmergencyContact: isEmergencyContact,
+                        createdAt: createdAt
+                    )
+                    
+                    contacts.append(contact)
+                }
+                
+                self.emergencyContacts = contacts
+            }
+    }
+    
+    private func addEmergencyContact(_ contact: EmergencyContact) {
+        guard let user = Auth.auth().currentUser else {
+            alertMessage = "User not found. Please sign in again."
+            showAlert = true
+            return
+        }
+        
+        let db = Firestore.firestore()
+        db.collection("users").document(user.uid).collection("emergencyContacts")
+            .document(contact.id)
+            .setData(contact.dictionary) { error in
+                if let error = error {
+                    alertMessage = "Failed to save emergency contact: \(error.localizedDescription)"
+                    showAlert = true
+                    return
+                }
+                
+                // Add to local array
+                if let index = emergencyContacts.firstIndex(where: { $0.id == contact.id }) {
+                    emergencyContacts[index] = contact
+                } else {
+                    emergencyContacts.append(contact)
+                }
+            }
+    }
+    
+    private func deleteEmergencyContact(_ contact: EmergencyContact) {
+        guard let user = Auth.auth().currentUser else {
+            alertMessage = "User not found. Please sign in again."
+            showAlert = true
+            return
+        }
+        
+        isLoading = true
+        
+        let db = Firestore.firestore()
+        db.collection("users").document(user.uid).collection("emergencyContacts")
+            .document(contact.id)
+            .delete { error in
+                isLoading = false
+                
+                if let error = error {
+                    alertMessage = "Failed to delete emergency contact: \(error.localizedDescription)"
+                    showAlert = true
+                    return
+                }
+                
+                // Remove from local array and show success message
+                if let index = emergencyContacts.firstIndex(where: { $0.id == contact.id }) {
+                    emergencyContacts.remove(at: index)
+                    alertMessage = "Emergency contact deleted successfully"
+                    showAlert = true
+                }
+            }
+    }
+    
+    private func callEmergencyContact(_ phoneNumber: String) {
+        guard let url = URL(string: "tel://\(phoneNumber.replacingOccurrences(of: " ", with: ""))") else {
+            alertMessage = "Unable to make call"
+            showAlert = true
+            return
+        }
+        
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        } else {
+            alertMessage = "Unable to make call"
+            showAlert = true
+        }
     }
 }
 
@@ -1478,6 +1772,524 @@ struct MedicalRecordFormView: View {
         ))
         
         rootViewController.present(confirmationAlert, animated: true)
+    }
+}
+
+// EmergencyContactFormView for adding/editing emergency contacts
+struct EmergencyContactFormView: View {
+    @Binding var isPresented: Bool
+    var contact: EmergencyContact?
+    var onSave: (EmergencyContact) -> Void
+    var onDelete: ((EmergencyContact) -> Void)?
+    
+    @State private var name: String = ""
+    @State private var relationship: String = ""
+    @State private var phoneNumber: String = ""
+    @State private var isEmergencyContact: Bool = true
+    
+    @State private var showingDeleteAlert = false
+    @FocusState private var focusedField: Field?
+    
+    // For keyboard focus management
+    enum Field: Hashable {
+        case name, relationship, phone
+    }
+    
+    // Relationship options
+    let relationshipOptions = ["Spouse", "Partner", "Parent", "Sibling", "Friend", "Doctor", "Other"]
+    
+    // Check if the form is in edit mode
+    private var isEditMode: Bool {
+        return contact != nil
+    }
+    
+    // Validation
+    private var isFormValid: Bool {
+        return !name.isEmpty && !relationship.isEmpty && !phoneNumber.isEmpty
+    }
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.white.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Form fields
+                        VStack(spacing: 20) {
+                            // Name field
+                            FormField(
+                                icon: "person.fill",
+                                title: "Name",
+                                placeholder: "Contact name",
+                                text: $name,
+                                keyboardType: .default
+                            )
+                            .focused($focusedField, equals: .name)
+                            
+                            // Relationship field with picker
+                            Menu {
+                                ForEach(relationshipOptions, id: \.self) { option in
+                                    Button(action: {
+                                        relationship = option
+                                    }) {
+                                        HStack {
+                                            Text(option)
+                                            if relationship == option {
+                                                Spacer()
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                FormFieldLabel(
+                                    icon: "person.2.fill",
+                                    title: "Relationship",
+                                    value: relationship.isEmpty ? "Select relationship" : relationship,
+                                    placeholder: relationship.isEmpty
+                                )
+                            }
+                            
+                            // Phone number field
+                            FormField(
+                                icon: "phone.fill",
+                                title: "Phone Number",
+                                placeholder: "Contact phone number",
+                                text: $phoneNumber,
+                                keyboardType: .phonePad
+                            )
+                            .focused($focusedField, equals: .phone)
+                            
+                            // Priority toggle
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(Color.maakoshDeepPink.opacity(0.7))
+                                    
+                                    Text("Emergency Contact")
+                                        .font(AppFont.body())
+                                        .foregroundColor(Color.primary)
+                                    
+                                    Spacer()
+                                    
+                                    Toggle("", isOn: $isEmergencyContact)
+                                        .toggleStyle(SwitchToggleStyle(tint: Color.maakoshDeepPink))
+                                }
+                                
+                                if isEmergencyContact {
+                                    Text("This contact will be shown prominently in case of emergency")
+                                        .font(AppFont.caption())
+                                        .foregroundColor(.secondary)
+                                        .padding(.leading, 26)
+                                }
+                            }
+                            .padding()
+                            .background(Color.gray.opacity(0.05))
+                            .cornerRadius(10)
+                        }
+                        .padding(.horizontal)
+                        
+                        // Call now button for edit mode
+                        if isEditMode {
+                            Button(action: {
+                                guard let contact = contact else { return }
+                                callEmergencyContact(contact.phoneNumber)
+                            }) {
+                                HStack {
+                                    Image(systemName: "phone.fill")
+                                        .foregroundColor(.white)
+                                    
+                                    Text("Call Now")
+                                        .foregroundColor(.white)
+                                        .font(AppFont.body())
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.green)
+                                .cornerRadius(10)
+                                .padding(.horizontal)
+                            }
+                        }
+                        
+                        // Delete button for edit mode
+                        if isEditMode, let onDelete = onDelete {
+                            Button(action: {
+                                showingDeleteAlert = true
+                            }) {
+                                HStack {
+                                    Image(systemName: "trash.fill")
+                                        .foregroundColor(.white)
+                                    
+                                    Text("Delete Contact")
+                                        .foregroundColor(.white)
+                                        .font(AppFont.body())
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.red)
+                                .cornerRadius(10)
+                                .padding(.horizontal)
+                            }
+                            .alert(isPresented: $showingDeleteAlert) {
+                                Alert(
+                                    title: Text("Delete Contact"),
+                                    message: Text("Are you sure you want to delete this emergency contact? This action cannot be undone."),
+                                    primaryButton: .destructive(Text("Delete")) {
+                                        if let contact = contact {
+                                            onDelete(contact)
+                                            isPresented = false
+                                        }
+                                    },
+                                    secondaryButton: .cancel()
+                                )
+                            }
+                        }
+                    }
+                    .padding(.vertical)
+                }
+                .navigationBarTitle(isEditMode ? "Edit Emergency Contact" : "New Emergency Contact", displayMode: .inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Cancel") {
+                            isPresented = false
+                        }
+                    }
+                    
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Save") {
+                            saveContact()
+                        }
+                        .disabled(!isFormValid)
+                    }
+                    
+                    ToolbarItem(placement: .keyboard) {
+                        HStack {
+                            Spacer()
+                            Button("Done") {
+                                focusedField = nil
+                            }
+                        }
+                    }
+                }
+                .onAppear {
+                    loadContactData()
+                }
+            }
+        }
+    }
+    
+    // Load existing contact data if in edit mode
+    private func loadContactData() {
+        if let contact = contact {
+            name = contact.name
+            relationship = contact.relationship
+            phoneNumber = contact.phoneNumber
+            isEmergencyContact = contact.isEmergencyContact
+            
+            // Set initial focus
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                focusedField = .name
+            }
+        } else {
+            // Set initial focus for new contact
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                focusedField = .name
+            }
+        }
+    }
+    
+    // Save the contact
+    private func saveContact() {
+        let savedContact = EmergencyContact(
+            id: contact?.id ?? UUID().uuidString,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            relationship: relationship,
+            phoneNumber: phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines),
+            isEmergencyContact: isEmergencyContact,
+            createdAt: contact?.createdAt ?? Date()
+        )
+        
+        onSave(savedContact)
+        isPresented = false
+    }
+    
+    // Call emergency contact
+    private func callEmergencyContact(_ phoneNumber: String) {
+        guard let url = URL(string: "tel://\(phoneNumber.replacingOccurrences(of: " ", with: ""))") else {
+            return
+        }
+        
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        }
+    }
+}
+
+// Form field with label and icon
+struct FormField: View {
+    let icon: String
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+    var keyboardType: UIKeyboardType = .default
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(Color.maakoshDeepPink.opacity(0.7))
+                
+                Text(title)
+                    .font(AppFont.body())
+                    .foregroundColor(Color.primary)
+            }
+            
+            TextField(placeholder, text: $text)
+                .font(AppFont.body())
+                .padding()
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(10)
+                .keyboardType(keyboardType)
+        }
+    }
+}
+
+// Form field label for menus
+struct FormFieldLabel: View {
+    let icon: String
+    let title: String
+    let value: String
+    let placeholder: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(Color.maakoshDeepPink.opacity(0.7))
+                
+                Text(title)
+                    .font(AppFont.body())
+                    .foregroundColor(Color.primary)
+            }
+            
+            HStack {
+                Text(value)
+                    .font(AppFont.body())
+                    .foregroundColor(placeholder ? .gray : .primary)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.down")
+                    .foregroundColor(.gray)
+                    .font(.system(size: 14))
+            }
+            .padding()
+            .background(Color.gray.opacity(0.05))
+            .cornerRadius(10)
+        }
+    }
+}
+
+// Dashboard Emergency Contacts component for quick access
+struct DashboardEmergencyContacts: View {
+    @State private var emergencyContacts: [EmergencyContact] = []
+    @State private var isLoading = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            HStack {
+                Text("Emergency Contacts")
+                    .font(AppFont.titleSmall())
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                Image(systemName: "phone.fill.badge.plus")
+                    .foregroundColor(Color.maakoshDeepPink)
+            }
+            
+            if isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .padding()
+                    Spacer()
+                }
+            } else if emergencyContacts.isEmpty {
+                emptyContactsView
+            } else {
+                contactsScrollView
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 2)
+        )
+        .onAppear {
+            loadEmergencyContacts()
+        }
+        .alert(isPresented: $showAlert) {
+            Alert(title: Text("Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+        }
+    }
+    
+    // Empty state view
+    private var emptyContactsView: some View {
+        VStack(spacing: 10) {
+            Text("No emergency contacts")
+                .foregroundColor(.secondary)
+                .font(AppFont.body())
+            
+            Text("Add contacts in your profile")
+                .foregroundColor(.secondary)
+                .font(AppFont.caption())
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 20)
+    }
+    
+    // Horizontal scrolling contacts
+    private var contactsScrollView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                ForEach(emergencyContacts.filter { $0.isEmergencyContact }) { contact in
+                    contactCard(contact)
+                }
+            }
+        }
+    }
+    
+    // Individual contact card
+    private func contactCard(_ contact: EmergencyContact) -> some View {
+        Button(action: {
+            callEmergencyContact(contact.phoneNumber)
+        }) {
+            VStack(alignment: .center, spacing: 8) {
+                // Contact avatar or initials
+                ZStack {
+                    Circle()
+                        .fill(Color.maakoshLightPink.opacity(0.2))
+                        .frame(width: 56, height: 56)
+                    
+                    Text(getInitials(from: contact.name))
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Color.maakoshDeepPink)
+                }
+                
+                Text(contact.name)
+                    .font(AppFont.body())
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                
+                Text(contact.relationship)
+                    .font(AppFont.caption())
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                
+                // Call button
+                HStack {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white)
+                    
+                    Text("Call")
+                        .font(AppFont.small())
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.maakoshDeepPink)
+                .cornerRadius(14)
+            }
+            .frame(width: 100)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 6)
+            .background(Color.white)
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+        }
+    }
+    
+    // Get initials from name
+    private func getInitials(from name: String) -> String {
+        let components = name.components(separatedBy: " ")
+        if components.count > 1, let first = components.first?.first, let last = components.last?.first {
+            return "\(first)\(last)"
+        } else if let first = components.first?.first {
+            return "\(first)"
+        }
+        return "?"
+    }
+    
+    // Load emergency contacts from Firestore
+    private func loadEmergencyContacts() {
+        guard let user = Auth.auth().currentUser else { return }
+        
+        isLoading = true
+        
+        let db = Firestore.firestore()
+        db.collection("users").document(user.uid).collection("emergencyContacts")
+            .order(by: "createdAt", descending: true)
+            .getDocuments { snapshot, error in
+                isLoading = false
+                
+                if let error = error {
+                    alertMessage = "Failed to load contacts: \(error.localizedDescription)"
+                    showAlert = true
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else { return }
+                
+                var contacts: [EmergencyContact] = []
+                
+                for document in documents {
+                    let data = document.data()
+                    
+                    guard let id = data["id"] as? String,
+                          let name = data["name"] as? String,
+                          let relationship = data["relationship"] as? String,
+                          let phoneNumber = data["phoneNumber"] as? String,
+                          let isEmergencyContact = data["isEmergencyContact"] as? Bool else {
+                        continue
+                    }
+                    
+                    let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                    
+                    let contact = EmergencyContact(
+                        id: id,
+                        name: name,
+                        relationship: relationship,
+                        phoneNumber: phoneNumber,
+                        isEmergencyContact: isEmergencyContact,
+                        createdAt: createdAt
+                    )
+                    
+                    contacts.append(contact)
+                }
+                
+                self.emergencyContacts = contacts
+            }
+    }
+    
+    // Call emergency contact
+    private func callEmergencyContact(_ phoneNumber: String) {
+        guard let url = URL(string: "tel://\(phoneNumber.replacingOccurrences(of: " ", with: ""))") else { return }
+        
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        }
     }
 }
 
