@@ -730,6 +730,15 @@ struct MaatriView: View {
 
                 User message: \(userInput)
                 
+                IMPORTANT FORMATTING GUIDELINES:
+                - Write in plain text only - no markdown formatting
+                - Do not use asterisks (*) for emphasis or bullets
+                - Do not use hashtags (#) for headers
+                - Do not use underscores (_) for emphasis
+                - Do not use any special characters for formatting
+                - Use simple paragraph breaks for structure
+                - If you need to make a list, use simple numbers or hyphens with spaces
+                
                 Keep your response friendly, supportive and concise. 
                 Make specific reference to their pregnancy stage, health metrics, or other relevant personal information where appropriate.
                 Focus on providing evidence-based information about maternal health, pregnancy, and conception.
@@ -741,8 +750,11 @@ struct MaatriView: View {
                 let response = try await model.generateContent(prompt)
                 
                 if let responseText = response.text {
+                    // Process the response to remove any markdown formatting
+                    let cleanedResponse = cleanMarkdownFormatting(responseText)
+                    
                     DispatchQueue.main.async {
-                        messages.append(Message(content: responseText, isUser: false))
+                        messages.append(Message(content: cleanedResponse, isUser: false))
                         isLoading = false
                         
                         // Analyze the conversation topics in background
@@ -755,6 +767,50 @@ struct MaatriView: View {
                 handleError(error.localizedDescription)
             }
         }
+    }
+    
+    // Function to clean any markdown formatting from the AI response
+    private func cleanMarkdownFormatting(_ text: String) -> String {
+        var cleanedText = text
+        
+        // Replace markdown heading patterns (# Text)
+        let headingRegex = try? NSRegularExpression(pattern: "#+ (.*?)(\n|$)", options: [])
+        cleanedText = headingRegex?.stringByReplacingMatches(
+            in: cleanedText,
+            options: [],
+            range: NSRange(location: 0, length: cleanedText.count),
+            withTemplate: "$1$2") ?? cleanedText
+        
+        // Replace asterisks for bold/italic
+        cleanedText = cleanedText.replacingOccurrences(of: "\\*\\*(.*?)\\*\\*", with: "$1", options: .regularExpression)
+        cleanedText = cleanedText.replacingOccurrences(of: "\\*(.*?)\\*", with: "$1", options: .regularExpression)
+        
+        // Replace underscores for italic
+        cleanedText = cleanedText.replacingOccurrences(of: "\\_(.*?)\\_", with: "$1", options: .regularExpression)
+        
+        // Replace backticks for code blocks
+        let codeBlockPattern = "```[\\s\\S]*?```"
+        if let regex = try? NSRegularExpression(pattern: codeBlockPattern, options: []) {
+            let nsString = cleanedText as NSString
+            let range = NSRange(location: 0, length: nsString.length)
+            cleanedText = regex.stringByReplacingMatches(in: cleanedText, options: [], range: range, withTemplate: "")
+        }
+        
+        // Replace inline code
+        cleanedText = cleanedText.replacingOccurrences(of: "`(.*?)`", with: "$1", options: .regularExpression)
+        
+        // Replace markdown links [text](url) with just text
+        cleanedText = cleanedText.replacingOccurrences(of: "\\[(.*?)\\]\\(.*?\\)", with: "$1", options: .regularExpression)
+        
+        // Convert markdown bullet points to simple hyphens with space
+        let bulletPattern = "^\\s*[\\*\\-\\+]\\s+"
+        if let regex = try? NSRegularExpression(pattern: bulletPattern, options: [.anchorsMatchLines]) {
+            let nsString = cleanedText as NSString
+            let range = NSRange(location: 0, length: nsString.length)
+            cleanedText = regex.stringByReplacingMatches(in: cleanedText, options: [], range: range, withTemplate: "- ")
+        }
+        
+        return cleanedText
     }
     
     // Analyze conversation to identify topics

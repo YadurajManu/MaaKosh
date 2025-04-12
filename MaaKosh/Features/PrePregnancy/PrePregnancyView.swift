@@ -15,6 +15,7 @@ struct PrePregnancyView: View {
     @State private var isLoadingRecommendations = false
     @State private var showFullRecommendation = false
     @State private var selectedRecommendation: AIRecommendation?
+    @State private var dailySummary: String = "Loading your personalized insights for today..."
     
     // Settings states
     @State private var showSettingsSheet = false
@@ -179,6 +180,7 @@ struct PrePregnancyView: View {
                 Button(action: {
                     // Refresh recommendations
                     generateRecommendations()
+                    generateDailySummary()
                 }) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 16))
@@ -457,6 +459,9 @@ struct PrePregnancyView: View {
         // Generate cycle summary
         cycleSummary = generateCycleSummary()
         
+        // Generate the daily summary
+        generateDailySummary()
+        
         Task {
             do {
                 let prompt = """
@@ -524,6 +529,55 @@ struct PrePregnancyView: View {
                 DispatchQueue.main.async {
                     generateGenericRecommendations()
                     isLoadingRecommendations = false
+                }
+            }
+        }
+    }
+    
+    // Generate a personalized daily summary using Gemini
+    private func generateDailySummary() {
+        // Start with loading state
+        DispatchQueue.main.async {
+            dailySummary = "Generating your personalized insights for today..."
+        }
+        
+        // Create context from cycle data
+        let context = createUserContext()
+        
+        Task {
+            do {
+                let prompt = """
+                You are an expert in women's reproductive health, fertility, and conception. Generate a personalized summary for today based on the user's menstrual cycle data.
+                
+                Make it encouraging, positive, and actionable. Write it directly to the user in second person ('you'). Include:
+                
+                1. A brief statement about where they are in their cycle today
+                2. One wellness tip relevant to their current cycle phase
+                3. One actionable insight based on their fertility status
+                
+                Keep it conversational, informative, and concise (80-120 words total).
+                
+                User data:
+                \(context)
+                
+                Current date: \(Date().formatted(date: .long, time: .omitted))
+                """
+                
+                let response = try await model.generateContent(prompt)
+                
+                if let summaryText = response.text {
+                    DispatchQueue.main.async {
+                        dailySummary = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        dailySummary = "You're currently in your \(currentCyclePhase()). Track your symptoms daily for better cycle insights and fertility predictions."
+                    }
+                }
+            } catch {
+                print("Error generating daily summary: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    dailySummary = "You're currently in your \(currentCyclePhase()). Remember to track your cycle regularly for personalized insights."
                 }
             }
         }
@@ -2161,6 +2215,53 @@ struct PrePregnancyView: View {
     // Add this new insights summary view
     private var insightsSummaryView: some View {
         VStack(spacing: 12) {
+            // Today's AI-generated summary
+            ZStack {
+                Rectangle()
+                    .fill(LinearGradient(
+                        gradient: Gradient(colors: [Color.purple.opacity(0.7), Color.pink.opacity(0.7)]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .cornerRadius(15)
+                
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "sun.max.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.white.opacity(0.2))
+                            .clipShape(Circle())
+                        
+                        Text("Today's Summary")
+                            .font(AppFont.body().bold())
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            generateDailySummary()
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(Color.white.opacity(0.2))
+                                .clipShape(Circle())
+                        }
+                    }
+                    
+                    Text(dailySummary)
+                        .font(AppFont.body())
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+                        .lineSpacing(4)
+                }
+                .padding()
+            }
+            .frame(minHeight: 150)
+            
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Your Cycle Summary")
