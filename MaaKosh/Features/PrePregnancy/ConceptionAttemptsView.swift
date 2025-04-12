@@ -9,6 +9,8 @@ struct ConceptionAttemptsView: View {
     @State private var isLoading = true
     @State private var showingDeleteAlert = false
     @State private var entryToDelete: ConceptionAttemptEntry?
+    @State private var refreshing = false
+    @State private var animate = false
     
     // MARK: - Body
     var body: some View {
@@ -29,7 +31,14 @@ struct ConceptionAttemptsView: View {
                 } else if attemptEntries.isEmpty {
                     // Empty state
                     emptyStateView
+                        .transition(.opacity)
                 } else {
+                    // Statistics dashboard
+                    AttemptStatsDashboardView(entries: attemptEntries)
+                        .padding(.horizontal)
+                        .padding(.top, 12)
+                        .padding(.bottom, 4)
+                    
                     // Entries list
                     ScrollView {
                         LazyVStack(spacing: 8) {
@@ -43,27 +52,60 @@ struct ConceptionAttemptsView: View {
                                             Label("Delete", systemImage: "trash")
                                         }
                                     }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            entryToDelete = entry
+                                            showingDeleteAlert = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                    .transition(.asymmetric(
+                                        insertion: .scale(scale: 0.9).combined(with: .opacity).animation(.spring(response: 0.3, dampingFraction: 0.7)),
+                                        removal: .scale(scale: 0.7).combined(with: .opacity).animation(.easeOut(duration: 0.2))
+                                    ))
                             }
                         }
                         .padding(.horizontal)
                         .padding(.top, 8)
                         .padding(.bottom, 80)
+                        .refreshable {
+                            withAnimation {
+                                refreshing = true
+                            }
+                            await refreshData()
+                            withAnimation {
+                                refreshing = false
+                            }
+                        }
                     }
                 }
             }
             .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        animate = true
+                    }
+                }
                 loadAttemptEntries()
+            }
+            .onDisappear {
+                animate = false
             }
             .sheet(isPresented: $showAddSheet) {
                 AddConceptionAttemptView(onSave: { entry in
-                    addAttemptEntry(entry)
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        addAttemptEntry(entry)
+                    }
                 })
             }
             .alert("Delete Entry", isPresented: $showingDeleteAlert, actions: {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) {
                     if let entry = entryToDelete {
-                        deleteAttemptEntry(entry)
+                        withAnimation {
+                            deleteAttemptEntry(entry)
+                        }
                     }
                 }
             }, message: {
@@ -76,6 +118,8 @@ struct ConceptionAttemptsView: View {
                 HStack {
                     Spacer()
                     addButton
+                        .scaleEffect(animate ? 1.0 : 0.5)
+                        .opacity(animate ? 1.0 : 0.0)
                 }
                 .padding(.trailing, 20)
                 .padding(.bottom, 20)
@@ -89,7 +133,12 @@ struct ConceptionAttemptsView: View {
     private var headerView: some View {
         HStack {
             Button(action: {
-                presentationMode.wrappedValue.dismiss()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    animate = false
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    presentationMode.wrappedValue.dismiss()
+                }
             }) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 20, weight: .semibold))
@@ -127,16 +176,23 @@ struct ConceptionAttemptsView: View {
                 .font(.system(size: 70))
                 .foregroundColor(.pink.opacity(0.7))
                 .padding()
+                .rotationEffect(.degrees(animate ? 0 : -10))
+                .scaleEffect(animate ? 1.0 : 0.8)
+                .animation(Animation.spring(response: 0.5, dampingFraction: 0.6).delay(0.1), value: animate)
             
             Text("No Entries Yet")
                 .font(AppFont.titleMedium())
                 .foregroundColor(.black)
+                .opacity(animate ? 1.0 : 0.0)
+                .animation(.easeInOut(duration: 0.3).delay(0.2), value: animate)
             
             Text("Track your conception attempts to optimize your journey")
                 .font(AppFont.body())
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
+                .opacity(animate ? 1.0 : 0.0)
+                .animation(.easeInOut(duration: 0.3).delay(0.3), value: animate)
             
             Button(action: {
                 showAddSheet = true
@@ -150,6 +206,9 @@ struct ConceptionAttemptsView: View {
                     .cornerRadius(25)
             }
             .padding(.top, 20)
+            .scaleEffect(animate ? 1.0 : 0.9)
+            .opacity(animate ? 1.0 : 0.0)
+            .animation(.easeInOut(duration: 0.3).delay(0.4), value: animate)
             
             Spacer()
         }
@@ -245,6 +304,7 @@ struct ConceptionAttemptsView: View {
     
     private var addButton: some View {
         Button(action: {
+            hapticFeedback(style: .medium)
             showAddSheet = true
         }) {
             ZStack {
@@ -272,7 +332,9 @@ struct ConceptionAttemptsView: View {
         db.collection("users").document(userId).collection("conceptionAttempts")
             .order(by: "date", descending: true)
             .getDocuments { snapshot, error in
-                isLoading = false
+                withAnimation {
+                    isLoading = false
+                }
                 
                 if let error = error {
                     print("Error loading conception attempts: \(error.localizedDescription)")
@@ -283,27 +345,29 @@ struct ConceptionAttemptsView: View {
                     return
                 }
                 
-                self.attemptEntries = documents.compactMap { document -> ConceptionAttemptEntry? in
-                    let data = document.data()
-                    let id = document.documentID
-                    let method = data["method"] as? String ?? ""
-                    let inFertileWindow = data["inFertileWindow"] as? Bool ?? false
-                    let ovulationDay = data["ovulationDay"] as? Bool ?? false
-                    let notes = data["notes"] as? String ?? ""
-                    
-                    if let timestamp = data["date"] as? Timestamp {
-                        let date = timestamp.dateValue()
-                        return ConceptionAttemptEntry(
-                            id: id,
-                            date: date,
-                            method: method,
-                            inFertileWindow: inFertileWindow,
-                            ovulationDay: ovulationDay,
-                            notes: notes
-                        )
+                withAnimation {
+                    self.attemptEntries = documents.compactMap { document -> ConceptionAttemptEntry? in
+                        let data = document.data()
+                        let id = document.documentID
+                        let method = data["method"] as? String ?? ""
+                        let inFertileWindow = data["inFertileWindow"] as? Bool ?? false
+                        let ovulationDay = data["ovulationDay"] as? Bool ?? false
+                        let notes = data["notes"] as? String ?? ""
+                        
+                        if let timestamp = data["date"] as? Timestamp {
+                            let date = timestamp.dateValue()
+                            return ConceptionAttemptEntry(
+                                id: id,
+                                date: date,
+                                method: method,
+                                inFertileWindow: inFertileWindow,
+                                ovulationDay: ovulationDay,
+                                notes: notes
+                            )
+                        }
+                        
+                        return nil
                     }
-                    
-                    return nil
                 }
             }
     }
@@ -349,6 +413,143 @@ struct ConceptionAttemptsView: View {
         formatter.dateFormat = "dd MMM yyyy"
         return formatter.string(from: date)
     }
+    
+    private func refreshData() async {
+        // Simulate network delay
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        loadAttemptEntries()
+    }
+    
+    private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.impactOccurred()
+    }
+}
+
+// MARK: - Statistics Dashboard
+
+struct AttemptStatsDashboardView: View {
+    let entries: [ConceptionAttemptEntry]
+    
+    private var fertileWindowAttempts: Int {
+        entries.filter { $0.inFertileWindow }.count
+    }
+    
+    private var ovulationDayAttempts: Int {
+        entries.filter { $0.ovulationDay }.count
+    }
+    
+    private var methodsUsed: [String: Int] {
+        var methods: [String: Int] = [:]
+        for entry in entries {
+            methods[entry.method, default: 0] += 1
+        }
+        return methods
+    }
+    
+    private var mostUsedMethod: String {
+        methodsUsed.max(by: { $0.value < $1.value })?.key ?? "None"
+    }
+    
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text("Conception Summary")
+                    .font(AppFont.body().bold())
+                    .foregroundColor(.black)
+                
+                Spacer()
+                
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.purple)
+            }
+            .padding(.bottom, 2)
+            
+            HStack(spacing: 12) {
+                StatBox(
+                    title: "Total",
+                    value: "\(entries.count)",
+                    icon: "list.bullet.clipboard",
+                    color: .purple
+                )
+                
+                StatBox(
+                    title: "Fertile Window",
+                    value: "\(fertileWindowAttempts)",
+                    icon: "calendar.badge.clock",
+                    color: .green
+                )
+                
+                StatBox(
+                    title: "Ovulation Day",
+                    value: "\(ovulationDayAttempts)",
+                    icon: "star.fill",
+                    color: .orange
+                )
+            }
+            
+            HStack {
+                Text("Most Used Method:")
+                    .font(AppFont.caption())
+                    .foregroundColor(.gray)
+                
+                Text(mostUsedMethod)
+                    .font(AppFont.caption().bold())
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.purple.opacity(0.1))
+                    .cornerRadius(10)
+                
+                Spacer()
+                
+                Text("\(calculateSuccessPercentage())% in Fertile Window")
+                    .font(AppFont.caption().bold())
+                    .foregroundColor(.green)
+            }
+            .padding(.top, 4)
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(10)
+        .shadow(color: Color.black.opacity(0.03), radius: 1, x: 0, y: 1)
+    }
+    
+    private func calculateSuccessPercentage() -> Int {
+        guard entries.count > 0 else { return 0 }
+        return Int((Double(fertileWindowAttempts) / Double(entries.count)) * 100)
+    }
+}
+
+struct StatBox: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(color)
+                
+                Text(value)
+                    .font(AppFont.titleSmall())
+                    .foregroundColor(.black)
+                    .fontWeight(.bold)
+            }
+            
+            Text(title)
+                .font(AppFont.caption())
+                .foregroundColor(.gray)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(color.opacity(0.1))
+        .cornerRadius(8)
+    }
 }
 
 // MARK: - Add Conception Attempt View
@@ -360,6 +561,7 @@ struct AddConceptionAttemptView: View {
     @State private var inFertileWindow = false
     @State private var ovulationDay = false
     @State private var notes = ""
+    @State private var showingConfirmation = false
     
     var methodOptions = ["Intercourse", "Artificial Insemination", "IVF", "Other"]
     var onSave: (ConceptionAttemptEntry) -> Void
@@ -407,22 +609,57 @@ struct AddConceptionAttemptView: View {
                                 .foregroundColor(.black)
                             
                             VStack(spacing: 12) {
-                                Toggle("In Fertile Window", isOn: $inFertileWindow)
-                                    .font(AppFont.body())
-                                    .padding(.horizontal)
-                                    .padding(.vertical, 8)
-                                    .background(Color.white)
-                                    .cornerRadius(8)
-                                    .toggleStyle(SwitchToggleStyle(tint: .pink))
+                                HStack {
+                                    Text("In Fertile Window")
+                                        .font(AppFont.body())
+                                    
+                                    Spacer()
+                                    
+                                    Toggle("", isOn: $inFertileWindow)
+                                        .toggleStyle(SwitchToggleStyle(tint: .pink))
+                                        .onChange(of: inFertileWindow) { newValue in
+                                            // Provide haptic feedback when toggle changes
+                                            hapticFeedback(style: .light)
+                                            
+                                            // If turning on ovulation, also turn on fertile window
+                                            if !newValue {
+                                                ovulationDay = false
+                                            }
+                                        }
+                                }
+                                .padding(.horizontal)
+                                .padding(.vertical, 10)
+                                .background(inFertileWindow ? Color.green.opacity(0.1) : Color.white)
+                                .cornerRadius(8)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: inFertileWindow)
                                 
-                                Toggle("Ovulation Day", isOn: $ovulationDay)
-                                    .font(AppFont.body())
-                                    .padding(.horizontal)
-                                    .padding(.vertical, 8)
-                                    .background(Color.white)
-                                    .cornerRadius(8)
-                                    .toggleStyle(SwitchToggleStyle(tint: .pink))
+                                HStack {
+                                    Text("Ovulation Day")
+                                        .font(AppFont.body())
+                                    
+                                    Spacer()
+                                    
+                                    Toggle("", isOn: $ovulationDay)
+                                        .toggleStyle(SwitchToggleStyle(tint: .pink))
+                                        .onChange(of: ovulationDay) { newValue in
+                                            // Provide haptic feedback when toggle changes
+                                            hapticFeedback(style: .light)
+                                            
+                                            // If turning on ovulation, also turn on fertile window
+                                            if newValue {
+                                                inFertileWindow = true
+                                            }
+                                        }
+                                }
+                                .padding(.horizontal)
+                                .padding(.vertical, 10)
+                                .background(ovulationDay ? Color.orange.opacity(0.1) : Color.white)
+                                .cornerRadius(8)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: ovulationDay)
                             }
+                            .background(Color.white)
+                            .cornerRadius(10)
+                            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
                         }
                         
                         // Notes section
@@ -442,6 +679,7 @@ struct AddConceptionAttemptView: View {
                         
                         // Save button
                         Button(action: {
+                            hapticFeedback(style: .medium)
                             saveEntry()
                         }) {
                             Text("Save Entry")
@@ -467,6 +705,31 @@ struct AddConceptionAttemptView: View {
                 }
             }
         }
+        .overlay(
+            ZStack {
+                if showingConfirmation {
+                    Color.black.opacity(0.2)
+                        .edgesIgnoringSafeArea(.all)
+                        .transition(.opacity)
+                    
+                    VStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.green)
+                        
+                        Text("Entry Added")
+                            .font(AppFont.body().bold())
+                            .padding(.top, 10)
+                    }
+                    .padding(30)
+                    .background(Color.white)
+                    .cornerRadius(20)
+                    .shadow(radius: 10)
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut, value: showingConfirmation)
+        )
     }
     
     private func saveEntry() {
@@ -479,8 +742,27 @@ struct AddConceptionAttemptView: View {
             notes: notes
         )
         
-        onSave(entry)
-        presentationMode.wrappedValue.dismiss()
+        // Show confirmation
+        withAnimation {
+            showingConfirmation = true
+        }
+        
+        // Dismiss after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation {
+                showingConfirmation = false
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                onSave(entry)
+                presentationMode.wrappedValue.dismiss()
+            }
+        }
+    }
+    
+    private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.impactOccurred()
     }
 }
 

@@ -9,6 +9,8 @@ struct PregnancyTestView: View {
     @State private var isLoading = true
     @State private var showingDeleteAlert = false
     @State private var entryToDelete: PregnancyTestEntry?
+    @State private var refreshing = false
+    @State private var animate = false
     
     // MARK: - Body
     var body: some View {
@@ -29,7 +31,14 @@ struct PregnancyTestView: View {
                 } else if testEntries.isEmpty {
                     // Empty state
                     emptyStateView
+                        .transition(.opacity)
                 } else {
+                    // Statistics dashboard
+                    StatisticsDashboardView(entries: testEntries)
+                        .padding(.horizontal)
+                        .padding(.top, 12)
+                        .padding(.bottom, 4)
+                    
                     // Test entries list
                     ScrollView {
                         LazyVStack(spacing: 8) {
@@ -43,27 +52,60 @@ struct PregnancyTestView: View {
                                             Label("Delete", systemImage: "trash")
                                         }
                                     }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            entryToDelete = entry
+                                            showingDeleteAlert = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                    .transition(.asymmetric(
+                                        insertion: .scale(scale: 0.9).combined(with: .opacity).animation(.spring(response: 0.3, dampingFraction: 0.7)),
+                                        removal: .scale(scale: 0.7).combined(with: .opacity).animation(.easeOut(duration: 0.2))
+                                    ))
                             }
                         }
                         .padding(.horizontal)
                         .padding(.top, 8)
                         .padding(.bottom, 80)
+                        .refreshable {
+                            withAnimation {
+                                refreshing = true
+                            }
+                            await refreshData()
+                            withAnimation {
+                                refreshing = false
+                            }
+                        }
                     }
                 }
             }
             .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        animate = true
+                    }
+                }
                 loadTestEntries()
+            }
+            .onDisappear {
+                animate = false
             }
             .sheet(isPresented: $showAddSheet) {
                 AddPregnancyTestView(onSave: { entry in
-                    addTestEntry(entry)
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        addTestEntry(entry)
+                    }
                 })
             }
             .alert("Delete Test Entry", isPresented: $showingDeleteAlert, actions: {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) {
                     if let entry = entryToDelete {
-                        deleteTestEntry(entry)
+                        withAnimation {
+                            deleteTestEntry(entry)
+                        }
                     }
                 }
             }, message: {
@@ -76,6 +118,8 @@ struct PregnancyTestView: View {
                 HStack {
                     Spacer()
                     addButton
+                        .scaleEffect(animate ? 1.0 : 0.5)
+                        .opacity(animate ? 1.0 : 0.0)
                 }
                 .padding(.trailing, 20)
                 .padding(.bottom, 20)
@@ -89,7 +133,12 @@ struct PregnancyTestView: View {
     private var headerView: some View {
         HStack {
             Button(action: {
-                presentationMode.wrappedValue.dismiss()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    animate = false
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    presentationMode.wrappedValue.dismiss()
+                }
             }) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 20, weight: .semibold))
@@ -127,16 +176,23 @@ struct PregnancyTestView: View {
                 .font(.system(size: 70))
                 .foregroundColor(.pink.opacity(0.7))
                 .padding()
+                .rotationEffect(.degrees(animate ? 0 : -10))
+                .scaleEffect(animate ? 1.0 : 0.8)
+                .animation(Animation.spring(response: 0.5, dampingFraction: 0.6).delay(0.1), value: animate)
             
             Text("No Test Entries Yet")
                 .font(AppFont.titleMedium())
                 .foregroundColor(.black)
+                .opacity(animate ? 1.0 : 0.0)
+                .animation(.easeInOut(duration: 0.3).delay(0.2), value: animate)
             
             Text("Track your pregnancy tests to monitor your journey")
                 .font(AppFont.body())
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
+                .opacity(animate ? 1.0 : 0.0)
+                .animation(.easeInOut(duration: 0.3).delay(0.3), value: animate)
             
             Button(action: {
                 showAddSheet = true
@@ -150,6 +206,9 @@ struct PregnancyTestView: View {
                     .cornerRadius(25)
             }
             .padding(.top, 20)
+            .scaleEffect(animate ? 1.0 : 0.9)
+            .opacity(animate ? 1.0 : 0.0)
+            .animation(.easeInOut(duration: 0.3).delay(0.4), value: animate)
             
             Spacer()
         }
@@ -233,6 +292,7 @@ struct PregnancyTestView: View {
     
     private var addButton: some View {
         Button(action: {
+            hapticFeedback(style: .medium)
             showAddSheet = true
         }) {
             ZStack {
@@ -260,7 +320,9 @@ struct PregnancyTestView: View {
         db.collection("users").document(userId).collection("pregnancyTests")
             .order(by: "date", descending: true)
             .getDocuments { snapshot, error in
-                isLoading = false
+                withAnimation {
+                    isLoading = false
+                }
                 
                 if let error = error {
                     print("Error loading test entries: \(error.localizedDescription)")
@@ -271,20 +333,22 @@ struct PregnancyTestView: View {
                     return
                 }
                 
-                self.testEntries = documents.compactMap { document -> PregnancyTestEntry? in
-                    let data = document.data()
-                    let id = document.documentID
-                    let result = data["result"] as? Bool ?? false
-                    let brand = data["brand"] as? String ?? ""
-                    let testType = data["testType"] as? String ?? ""
-                    let notes = data["notes"] as? String ?? ""
-                    
-                    if let timestamp = data["date"] as? Timestamp {
-                        let date = timestamp.dateValue()
-                        return PregnancyTestEntry(id: id, date: date, result: result, brand: brand, testType: testType, notes: notes)
+                withAnimation {
+                    self.testEntries = documents.compactMap { document -> PregnancyTestEntry? in
+                        let data = document.data()
+                        let id = document.documentID
+                        let result = data["result"] as? Bool ?? false
+                        let brand = data["brand"] as? String ?? ""
+                        let testType = data["testType"] as? String ?? ""
+                        let notes = data["notes"] as? String ?? ""
+                        
+                        if let timestamp = data["date"] as? Timestamp {
+                            let date = timestamp.dateValue()
+                            return PregnancyTestEntry(id: id, date: date, result: result, brand: brand, testType: testType, notes: notes)
+                        }
+                        
+                        return nil
                     }
-                    
-                    return nil
                 }
             }
     }
@@ -330,6 +394,97 @@ struct PregnancyTestView: View {
         formatter.dateFormat = "dd MMM yyyy"
         return formatter.string(from: date)
     }
+    
+    private func refreshData() async {
+        // Simulate network delay
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        loadTestEntries()
+    }
+    
+    private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.impactOccurred()
+    }
+}
+
+// MARK: - Statistics Dashboard
+
+struct StatisticsDashboardView: View {
+    let entries: [PregnancyTestEntry]
+    
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text("Test Summary")
+                    .font(AppFont.body().bold())
+                    .foregroundColor(.black)
+                
+                Spacer()
+                
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.pink)
+            }
+            .padding(.bottom, 2)
+            
+            HStack(spacing: 12) {
+                StatCard(
+                    title: "Total Tests",
+                    value: "\(entries.count)",
+                    icon: "list.bullet.clipboard",
+                    color: .blue
+                )
+                
+                StatCard(
+                    title: "Positive",
+                    value: "\(entries.filter { $0.result }.count)",
+                    icon: "checkmark.circle",
+                    color: .green
+                )
+                
+                StatCard(
+                    title: "Negative",
+                    value: "\(entries.filter { !$0.result }.count)",
+                    icon: "xmark.circle",
+                    color: .gray
+                )
+            }
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(10)
+        .shadow(color: Color.black.opacity(0.03), radius: 1, x: 0, y: 1)
+    }
+}
+
+struct StatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(color)
+                
+                Text(value)
+                    .font(AppFont.titleSmall())
+                    .foregroundColor(.black)
+                    .fontWeight(.bold)
+            }
+            
+            Text(title)
+                .font(AppFont.caption())
+                .foregroundColor(.gray)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(color.opacity(0.1))
+        .cornerRadius(8)
+    }
 }
 
 // MARK: - Add Pregnancy Test View
@@ -341,6 +496,7 @@ struct AddPregnancyTestView: View {
     @State private var brand = ""
     @State private var testType = "Urine"
     @State private var notes = ""
+    @State private var showingConfirmation = false
     
     var testTypes = ["Urine", "Blood", "Digital", "Other"]
     var onSave: (PregnancyTestEntry) -> Void
@@ -376,7 +532,10 @@ struct AddPregnancyTestView: View {
                                 Spacer()
                                 
                                 Button(action: {
-                                    result = false
+                                    hapticFeedback(style: .light)
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        result = false
+                                    }
                                 }) {
                                     Text("Negative")
                                         .font(AppFont.body())
@@ -385,12 +544,16 @@ struct AddPregnancyTestView: View {
                                         .padding(.horizontal, 25)
                                         .background(!result ? Color.blue : Color.gray.opacity(0.2))
                                         .cornerRadius(25)
+                                        .shadow(color: !result ? Color.blue.opacity(0.3) : .clear, radius: 3, x: 0, y: 2)
                                 }
                                 
                                 Spacer()
                                 
                                 Button(action: {
-                                    result = true
+                                    hapticFeedback(style: .light)
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        result = true
+                                    }
                                 }) {
                                     Text("Positive")
                                         .font(AppFont.body())
@@ -399,6 +562,7 @@ struct AddPregnancyTestView: View {
                                         .padding(.horizontal, 25)
                                         .background(result ? Color.green : Color.gray.opacity(0.2))
                                         .cornerRadius(25)
+                                        .shadow(color: result ? Color.green.opacity(0.3) : .clear, radius: 3, x: 0, y: 2)
                                 }
                                 
                                 Spacer()
@@ -454,6 +618,7 @@ struct AddPregnancyTestView: View {
                         
                         // Save button
                         Button(action: {
+                            hapticFeedback(style: .medium)
                             saveEntry()
                         }) {
                             Text("Save Entry")
@@ -479,6 +644,31 @@ struct AddPregnancyTestView: View {
                 }
             }
         }
+        .overlay(
+            ZStack {
+                if showingConfirmation {
+                    Color.black.opacity(0.2)
+                        .edgesIgnoringSafeArea(.all)
+                        .transition(.opacity)
+                    
+                    VStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.green)
+                        
+                        Text("Test Entry Added")
+                            .font(AppFont.body().bold())
+                            .padding(.top, 10)
+                    }
+                    .padding(30)
+                    .background(Color.white)
+                    .cornerRadius(20)
+                    .shadow(radius: 10)
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut, value: showingConfirmation)
+        )
     }
     
     private func saveEntry() {
@@ -491,8 +681,27 @@ struct AddPregnancyTestView: View {
             notes: notes
         )
         
-        onSave(entry)
-        presentationMode.wrappedValue.dismiss()
+        // Show confirmation
+        withAnimation {
+            showingConfirmation = true
+        }
+        
+        // Dismiss after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation {
+                showingConfirmation = false
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                onSave(entry)
+                presentationMode.wrappedValue.dismiss()
+            }
+        }
+    }
+    
+    private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.impactOccurred()
     }
 }
 

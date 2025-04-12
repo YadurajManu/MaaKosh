@@ -23,13 +23,21 @@ struct DashboardView: View {
                 }
                 .tag(0)
             
+            // Maatri AI Assistant Tab
+            MaatriView()
+                .tabItem {
+                    Image(systemName: "brain.head.profile")
+                    Text("Maatri")
+                }
+                .tag(1)
+            
             // Profile Tab
             ProfileView()
                 .tabItem {
                     Image(systemName: "person.fill")
                     Text("Profile")
                 }
-                .tag(1)
+                .tag(2)
         }
         .accentColor(Color.maakoshDeepPink)
         .alert(isPresented: $showAlert) {
