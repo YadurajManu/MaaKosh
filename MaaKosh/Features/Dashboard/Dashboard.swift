@@ -14,6 +14,7 @@ struct Dashboard: View {
     @State private var userEmail: String = ""
     @State private var isLoading = true
     @State private var navigateToPrePregnancy = false
+    @State private var navigateToPregnancy = false
     
     var body: some View {
         ScrollView {
@@ -37,6 +38,11 @@ struct Dashboard: View {
         .fullScreenCover(isPresented: $navigateToPrePregnancy) {
             NavigationView {
                 PrePregnancyView()
+            }
+        }
+        .fullScreenCover(isPresented: $navigateToPregnancy) {
+            NavigationView {
+                PregnancyView()
             }
         }
     }
@@ -93,7 +99,7 @@ struct Dashboard: View {
                 description: "Monitoring and care during pregnancy",
                 color: Color.purple.opacity(0.15),
                 action: {
-                    // Will implement in the future
+                    navigateToPregnancy = true
                 }
             )
             

@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import GoogleGenerativeAI
 
 struct PrePregnancyView: View {
     @Environment(\.presentationMode) var presentationMode
@@ -8,6 +9,12 @@ struct PrePregnancyView: View {
     @State private var selectedYear = Calendar.current.component(.year, from: Date())
     @State private var cycleData: [Date: CycleDayType] = [:]
     @State private var isLoading = true
+    
+    // AI Recommendation States
+    @State private var recommendations: [AIRecommendation] = []
+    @State private var isLoadingRecommendations = false
+    @State private var showFullRecommendation = false
+    @State private var selectedRecommendation: AIRecommendation?
     
     // Settings states
     @State private var showSettingsSheet = false
@@ -30,6 +37,13 @@ struct PrePregnancyView: View {
     private let weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     private let monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     
+    // AI model for generating recommendations
+    private let apiKey = "AIzaSyCueBkZoml0YMVXHxtMZeE7Xn-0iqDRpGU"
+    private var model: GenerativeModel {
+        let config = GenerationConfig(maxOutputTokens: 500)
+        return GenerativeModel(name: "gemini-1.5-pro", apiKey: apiKey, generationConfig: config)
+    }
+    
     var body: some View {
         ZStack {
             // Main content
@@ -37,6 +51,9 @@ struct PrePregnancyView: View {
                 VStack(spacing: 25) {
                     // Title bar
                     titleBar
+                    
+                    // AI Personalized Insights
+                    aiRecommendationsCard
                     
                     // Menstrual Cycle Tracker
                     cycleTrackerCard
@@ -66,6 +83,7 @@ struct PrePregnancyView: View {
                 loadCycleData()
                 loadCycleEvents()
                 loadCycleSettings()
+                generateRecommendations()
             }
             // FAB for adding data
             .overlay(
@@ -76,6 +94,11 @@ struct PrePregnancyView: View {
             // Date action dialog
             if showDateActionDialog, let selectedDate = selectedDate {
                 dateActionDialog(date: selectedDate, day: selectedDay)
+            }
+            
+            // Full recommendation sheet
+            if showFullRecommendation, let recommendation = selectedRecommendation {
+                fullRecommendationView(recommendation: recommendation)
             }
         }
         .sheet(isPresented: $showSettingsSheet) {
@@ -97,6 +120,501 @@ struct PrePregnancyView: View {
                 EmptyView()
             }
         )
+    }
+    
+    // MARK: - AI Recommendations
+    
+    private var aiRecommendationsCard: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            // Header with title and refresh button
+            HStack {
+                Text("Personalized AI Insights")
+                    .font(AppFont.titleSmall())
+                    .foregroundColor(.black)
+                
+                Spacer()
+                
+                Button(action: {
+                    // Refresh recommendations
+                    generateRecommendations()
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 16))
+                        .foregroundColor(.pink)
+                        .padding(8)
+                        .background(Color.pink.opacity(0.1))
+                        .clipShape(Circle())
+                }
+            }
+            
+            if isLoadingRecommendations {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 10) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .pink))
+                        
+                        Text("Generating personalized recommendations...")
+                            .font(AppFont.caption())
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 30)
+                    Spacer()
+                }
+            } else if recommendations.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 30))
+                            .foregroundColor(.pink.opacity(0.5))
+                        
+                        Text("No recommendations yet")
+                            .font(AppFont.body())
+                            .foregroundColor(.gray)
+                        
+                        Text("Add more cycle data to get personalized insights")
+                            .font(AppFont.caption())
+                            .foregroundColor(.gray.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 30)
+                    Spacer()
+                }
+            } else {
+                // Recommendations carousel
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 15) {
+                        ForEach(recommendations) { recommendation in
+                            recommendationCard(recommendation)
+                                .onTapGesture {
+                                    selectedRecommendation = recommendation
+                                    withAnimation {
+                                        showFullRecommendation = true
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 10)
+                }
+            }
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(20)
+        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+    
+    private func recommendationCard(_ recommendation: AIRecommendation) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with category and icon
+            HStack {
+                Image(systemName: recommendation.iconName)
+                    .font(.system(size: 18))
+                    .foregroundColor(.white)
+                    .frame(width: 32, height: 32)
+                    .background(recommendation.color)
+                    .clipShape(Circle())
+                
+                Text(recommendation.category)
+                    .font(AppFont.caption().bold())
+                    .foregroundColor(recommendation.color)
+            }
+            
+            // Title
+            Text(recommendation.title)
+                .font(AppFont.body().bold())
+                .foregroundColor(.black)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            
+            // Short preview of content
+            Text(recommendation.content)
+                .font(AppFont.caption())
+                .foregroundColor(.gray)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            
+            // "Read More" button
+            HStack {
+                Spacer()
+                
+                Text("Read More")
+                    .font(AppFont.caption().bold())
+                    .foregroundColor(.pink)
+            }
+        }
+        .padding()
+        .frame(width: 250)
+        .background(Color.white)
+        .cornerRadius(15)
+        .overlay(
+            RoundedRectangle(cornerRadius: 15)
+                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 5, x: 0, y: 2)
+    }
+    
+    private func fullRecommendationView(recommendation: AIRecommendation) -> some View {
+        ZStack {
+            // Dimmed background
+            Color.black.opacity(0.4)
+                .edgesIgnoringSafeArea(.all)
+                .onTapGesture {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showFullRecommendation = false
+                    }
+                }
+            
+            // Modal content
+            VStack(alignment: .leading, spacing: 20) {
+                // Header with category and close button
+                HStack {
+                    // Category with icon
+                    HStack {
+                        Image(systemName: recommendation.iconName)
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                            .frame(width: 32, height: 32)
+                            .background(recommendation.color)
+                            .clipShape(Circle())
+                        
+                        Text(recommendation.category)
+                            .font(AppFont.body().bold())
+                            .foregroundColor(recommendation.color)
+                    }
+                    
+                    Spacer()
+                    
+                    // Close button
+                    Button(action: {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showFullRecommendation = false
+                        }
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.gray)
+                            .padding(8)
+                            .background(Color.gray.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                }
+                
+                // Title
+                Text(recommendation.title)
+                    .font(AppFont.titleMedium())
+                    .foregroundColor(.black)
+                
+                // Content
+                ScrollView {
+                    Text(recommendation.content)
+                        .font(AppFont.body())
+                        .foregroundColor(.black.opacity(0.8))
+                        .lineSpacing(5)
+                }
+                
+                // Source information
+                HStack {
+                    Image(systemName: "brain.head.profile")
+                        .foregroundColor(.pink)
+                    
+                    Text("Based on your cycle data")
+                        .font(AppFont.caption())
+                        .foregroundColor(.gray)
+                    
+                    Spacer()
+                    
+                    Text("MaaKosh AI")
+                        .font(AppFont.caption().bold())
+                        .foregroundColor(.pink)
+                }
+                .padding(.top, 5)
+            }
+            .padding(25)
+            .background(Color.white)
+            .cornerRadius(20)
+            .shadow(radius: 10)
+            .padding(.horizontal, 20)
+            .frame(maxHeight: UIScreen.main.bounds.height * 0.7)
+            .transition(.scale)
+        }
+    }
+    
+    // Generate AI recommendations based on user's cycle data
+    private func generateRecommendations() {
+        guard !cycleEvents.isEmpty else {
+            // If no cycle data, provide generic recommendations
+            generateGenericRecommendations()
+            return
+        }
+        
+        isLoadingRecommendations = true
+        
+        // Create context from cycle data
+        let context = createUserContext()
+        
+        Task {
+            do {
+                let prompt = """
+                You are an expert in women's reproductive health, fertility, and conception.
+                
+                Based on the following user data, generate 3 personalized recommendations or insights.
+                Format each recommendation with: 
+                1. A category (Fertility, Cycle Patterns, Nutrition, Lifestyle, or Wellness)
+                2. A concise title (max 10 words)
+                3. Detailed but concise content (150-200 words)
+                
+                User data:
+                \(context)
+                
+                Respond only with 3 recommendations in this exact JSON format:
+                ```json
+                [
+                  {
+                    "category": "Category name",
+                    "title": "Recommendation title",
+                    "content": "Detailed explanation"
+                  },
+                  {
+                    "category": "Category name",
+                    "title": "Recommendation title",
+                    "content": "Detailed explanation"
+                  },
+                  {
+                    "category": "Category name",
+                    "title": "Recommendation title",
+                    "content": "Detailed explanation"
+                  }
+                ]
+                ```
+                
+                Make sure your recommendations are evidence-based, personalized to the user's specific cycle patterns, and actionable.
+                """
+                
+                let response = try await model.generateContent(prompt)
+                
+                if let responseText = response.text {
+                    // Parse JSON response
+                    let jsonString = extractJSON(from: responseText)
+                    parseRecommendations(from: jsonString)
+                } else {
+                    generateGenericRecommendations()
+                }
+                
+                DispatchQueue.main.async {
+                    isLoadingRecommendations = false
+                }
+            } catch {
+                print("Error generating recommendations: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    generateGenericRecommendations()
+                    isLoadingRecommendations = false
+                }
+            }
+        }
+    }
+    
+    // Create a context string from user's cycle data
+    private func createUserContext() -> String {
+        var context = "Cycle length: \(cycleLength) days\n"
+        context += "Period length: \(periodLength) days\n"
+        
+        // Add period days
+        let periodDays = cycleEvents.filter { $0.type == .period }
+        if !periodDays.isEmpty {
+            context += "\nPeriod records:\n"
+            for event in periodDays.sorted(by: { $0.date < $1.date }).prefix(5) {
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateStyle = .medium
+                context += "- \(dateFormatter.string(from: event.date))\n"
+            }
+        }
+        
+        // Add ovulation days
+        let ovulationDays = cycleEvents.filter { $0.type == .ovulation }
+        if !ovulationDays.isEmpty {
+            context += "\nOvulation records:\n"
+            for event in ovulationDays.sorted(by: { $0.date < $1.date }).prefix(3) {
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateStyle = .medium
+                context += "- \(dateFormatter.string(from: event.date))\n"
+            }
+        }
+        
+        // Add current cycle phase
+        context += "\nCurrent cycle phase: \(currentCyclePhase())\n"
+        
+        // Add cycle regularity information
+        context += "Cycle regularity: \(determineCycleRegularity())\n"
+        
+        // Add next predicted period
+        context += "Next predicted period: \(nextPeriodPrediction())\n"
+        
+        return context
+    }
+    
+    // Determine the current phase of the menstrual cycle
+    private func currentCyclePhase() -> String {
+        // Find most recent period start
+        let periodEvents = cycleEvents.filter { $0.type == .period }
+        let sortedPeriodEvents = periodEvents.sorted(by: { $0.date > $1.date })
+        
+        guard let lastPeriod = sortedPeriodEvents.first?.date else {
+            return "Unknown"
+        }
+        
+        let daysSinceLastPeriod = Calendar.current.dateComponents([.day], from: lastPeriod, to: Date()).day ?? 0
+        
+        if daysSinceLastPeriod < periodLength {
+            return "Menstrual Phase"
+        } else if daysSinceLastPeriod < 14 {
+            return "Follicular Phase"
+        } else if daysSinceLastPeriod < 17 {
+            return "Ovulatory Phase"
+        } else {
+            return "Luteal Phase"
+        }
+    }
+    
+    // Determine if cycle is regular, irregular, or unknown
+    private func determineCycleRegularity() -> String {
+        let periodEvents = cycleEvents.filter { $0.type == .period }
+        let sortedPeriodEvents = periodEvents.sorted(by: { $0.date < $1.date })
+        
+        if sortedPeriodEvents.count < 3 {
+            return "Not enough data"
+        }
+        
+        var cycleLengths: [Int] = []
+        for i in 0..<(sortedPeriodEvents.count - 1) {
+            let days = Calendar.current.dateComponents([.day], from: sortedPeriodEvents[i].date, to: sortedPeriodEvents[i+1].date).day ?? 0
+            cycleLengths.append(days)
+        }
+        
+        // Calculate standard deviation
+        let mean = cycleLengths.reduce(0, +) / cycleLengths.count
+        let variance = cycleLengths.map { pow(Double($0 - mean), 2) }.reduce(0, +) / Double(cycleLengths.count)
+        let standardDeviation = sqrt(variance)
+        
+        if standardDeviation < 2.0 {
+            return "Very Regular"
+        } else if standardDeviation < 4.0 {
+            return "Regular"
+        } else {
+            return "Irregular"
+        }
+    }
+    
+    // Extract JSON from AI response
+    private func extractJSON(from text: String) -> String {
+        if let startIndex = text.range(of: "```json")?.upperBound,
+           let endIndex = text.range(of: "```", range: startIndex..<text.endIndex)?.lowerBound {
+            return String(text[startIndex..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return text
+    }
+    
+    // Parse recommendations from JSON string
+    private func parseRecommendations(from jsonString: String) {
+        do {
+            let decoder = JSONDecoder()
+            let data = jsonString.data(using: .utf8)!
+            
+            struct RawRecommendation: Codable {
+                let category: String
+                let title: String
+                let content: String
+            }
+            
+            let rawRecommendations = try decoder.decode([RawRecommendation].self, from: data)
+            
+            DispatchQueue.main.async {
+                self.recommendations = rawRecommendations.map { raw in
+                    AIRecommendation(
+                        id: UUID().uuidString,
+                        category: raw.category,
+                        title: raw.title,
+                        content: raw.content,
+                        iconName: self.iconFor(category: raw.category),
+                        color: self.colorFor(category: raw.category)
+                    )
+                }
+            }
+        } catch {
+            print("Error parsing recommendations: \(error.localizedDescription)")
+            generateGenericRecommendations()
+        }
+    }
+    
+    // Generate generic recommendations if AI generation fails or no data available
+    private func generateGenericRecommendations() {
+        DispatchQueue.main.async {
+            self.recommendations = [
+                AIRecommendation(
+                    id: "1",
+                    category: "Fertility",
+                    title: "Understanding Your Fertile Window",
+                    content: "The fertile window typically occurs 12-16 days before your next period. For a 28-day cycle, this is usually around days 12-17. Having intercourse every 1-2 days during this window maximizes your chances of conception. Track your basal body temperature and cervical mucus changes to better identify your personal fertile window. Remember that sperm can survive up to 5 days in the female reproductive tract, so starting intercourse a few days before ovulation can increase success rates.",
+                    iconName: "star.fill",
+                    color: .green
+                ),
+                AIRecommendation(
+                    id: "2",
+                    category: "Nutrition",
+                    title: "Optimizing Diet for Conception",
+                    content: "A balanced diet rich in antioxidants, healthy fats, and key nutrients supports reproductive health. Include folate-rich foods like leafy greens, legumes, and fortified grains to prevent neural tube defects. Omega-3 fatty acids from fish, walnuts, and flaxseeds help regulate hormones and increase blood flow to reproductive organs. Limit caffeine to 200mg daily and avoid alcohol when trying to conceive. Stay well-hydrated and maintain a healthy weight, as both underweight and overweight conditions can affect fertility.",
+                    iconName: "leaf.fill",
+                    color: .blue
+                ),
+                AIRecommendation(
+                    id: "3",
+                    category: "Wellness",
+                    title: "Stress Management for Fertility",
+                    content: "Chronic stress can disrupt hormone balance and affect ovulation. Incorporate stress-reduction practices like meditation, yoga, or deep breathing exercises into your daily routine. Regular moderate exercise improves blood flow and hormone balance but avoid excessive high-intensity workouts which can interfere with ovulation. Prioritize sleep quality, aiming for 7-9 hours nightly. Consider joining a support group or working with a therapist if you're experiencing anxiety about conception. Remember that stress management benefits both physical and emotional health during your fertility journey.",
+                    iconName: "heart.fill",
+                    color: .pink
+                )
+            ]
+        }
+    }
+    
+    // Get icon for recommendation category
+    private func iconFor(category: String) -> String {
+        switch category {
+        case "Fertility":
+            return "star.fill"
+        case "Cycle Patterns":
+            return "waveform.path"
+        case "Nutrition":
+            return "leaf.fill"
+        case "Lifestyle":
+            return "figure.walk"
+        case "Wellness":
+            return "heart.fill"
+        default:
+            return "doc.text.fill"
+        }
+    }
+    
+    // Get color for recommendation category
+    private func colorFor(category: String) -> Color {
+        switch category {
+        case "Fertility":
+            return .green
+        case "Cycle Patterns":
+            return .purple
+        case "Nutrition":
+            return .blue
+        case "Lifestyle":
+            return .orange
+        case "Wellness":
+            return .pink
+        default:
+            return .gray
+        }
     }
     
     // MARK: - View Components
@@ -1475,6 +1993,15 @@ struct CycleEvent: Identifiable {
     let type: CycleDayType
     let timestamp: Date
     let notes: String
+}
+
+struct AIRecommendation: Identifiable {
+    let id: String
+    let category: String
+    let title: String
+    let content: String
+    let iconName: String
+    let color: Color
 }
 
 #Preview {
