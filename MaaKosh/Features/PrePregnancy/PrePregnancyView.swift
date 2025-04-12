@@ -23,6 +23,9 @@ struct PrePregnancyView: View {
     @State private var selectedDay: Int = 0
     @State private var cycleEvents: [CycleEvent] = []
     
+    @State private var navigateToPregnancyTests = false
+    @State private var navigateToConceptionAttempts = false
+    
     // Calendar constants
     private let weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     private let monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -43,12 +46,12 @@ struct PrePregnancyView: View {
                     
                     // Pregnancy Test Entries
                     sectionButton(title: "Pregnancy Test Entries", action: {
-                        // Navigate to pregnancy test entries
+                        navigateToPregnancyTests = true
                     })
                     
                     // Conception Attempts
                     sectionButton(title: "Conception Attempts", action: {
-                        // Navigate to conception attempts tracking
+                        navigateToConceptionAttempts = true
                     })
                     
                     // Wellness Tips & Advice
@@ -78,6 +81,22 @@ struct PrePregnancyView: View {
         .sheet(isPresented: $showSettingsSheet) {
             cycleSettingsSheet
         }
+        .background(
+            NavigationLink(
+                destination: PregnancyTestView(),
+                isActive: $navigateToPregnancyTests
+            ) {
+                EmptyView()
+            }
+        )
+        .background(
+            NavigationLink(
+                destination: ConceptionAttemptsView(),
+                isActive: $navigateToConceptionAttempts
+            ) {
+                EmptyView()
+            }
+        )
     }
     
     // MARK: - View Components

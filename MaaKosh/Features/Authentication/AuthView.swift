@@ -198,10 +198,10 @@ struct AuthView: View {
                                     }
                                 )
                                 .onChange(of: email) { _ in
-                                    showEmailTooltip = isEmailFocused && !isEmailValid && email.count > 0
+                                    showEmailTooltip = authState == .signUp && isEmailFocused && !isEmailValid && email.count > 0
                                 }
                                 .onTapGesture {
-                                    showEmailTooltip = !isEmailValid && email.count > 0
+                                    showEmailTooltip = authState == .signUp && !isEmailValid && email.count > 0
                                 }
                                 
                                 // Email tooltip
@@ -256,16 +256,16 @@ struct AuthView: View {
                                 )
                                 .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 3)
                                 .onChange(of: password) { _ in
-                                    showPasswordStrength = password.count > 0
-                                    showPasswordTooltip = isPasswordFocused && password.count > 0 && passwordStrength == .weak
+                                    showPasswordStrength = authState == .signUp && password.count > 0
+                                    showPasswordTooltip = authState == .signUp && isPasswordFocused && password.count > 0 && passwordStrength == .weak
                                 }
                                 .onTapGesture {
                                     isPasswordFocused = true
-                                    showPasswordTooltip = password.count > 0 && passwordStrength == .weak
+                                    showPasswordTooltip = authState == .signUp && password.count > 0 && passwordStrength == .weak
                                 }
                                 
-                                // Password strength meter (only if password has content)
-                                if showPasswordStrength {
+                                // Password strength meter (only if password has content and in signup mode)
+                                if showPasswordStrength && authState == .signUp {
                                     VStack(alignment: .leading, spacing: 5) {
                                         Text("Password Strength: \(passwordStrength.description)")
                                             .font(AppFont.small())
@@ -382,25 +382,8 @@ struct AuthView: View {
                                         .fill(Color.white.opacity(0.5))
                                 )
                             } else {
-                                // Terms links for sign in (more subtle)
-                                HStack {
-                                    Spacer()
-                                    Button(action: { showTermsSheet = true }) {
-                                        Text("Terms")
-                                            .font(AppFont.small())
-                                            .foregroundColor(Color.black.opacity(0.6))
-                                    }
-                                    Text("•")
-                                        .font(AppFont.small())
-                                        .foregroundColor(Color.black.opacity(0.6))
-                                    Button(action: { showPrivacySheet = true }) {
-                                        Text("Privacy")
-                                            .font(AppFont.small())
-                                            .foregroundColor(Color.black.opacity(0.6))
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.top, 5)
+                                // Terms links for sign in (more subtle) - REMOVING THIS SECTION
+                                // This section has been removed to show terms only on sign-up
                             }
                             
                             // Main action button (Sign In/Sign Up)
