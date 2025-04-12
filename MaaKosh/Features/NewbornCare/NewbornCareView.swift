@@ -144,6 +144,9 @@ struct NewbornCareView: View {
     // Add state variable for neonatal patch in the NewbornCareView struct
     @State private var showVitalMonitoring = false
     
+    // Add state variable for breastfeeding tracker sheet
+    @State private var showBreastfeedingTracker = false
+    
     // Feeding counter for today
     private var todayFeedingCount: Int {
         let calendar = Calendar.current
@@ -229,6 +232,11 @@ struct NewbornCareView: View {
                 growthMeasurementsCard
                 
                 developmentMilestonesCard
+                
+                // Add the breastfeedingTrackerCard to the scrollable card list
+                // Update the VStack in the main content section of NewbornCareView to include this new card
+                // For example, add it before or after babyCareGuideCard
+                breastfeedingTrackerCard
             }
             .padding(.horizontal)
             .padding(.bottom, 30)
@@ -1052,6 +1060,42 @@ struct NewbornCareView: View {
                 showAlert = true
                 alertMessage = "Feeding record deleted successfully"
             }
+        }
+    }
+    
+    // Add breastfeedingTrackerCard as a computed property
+    private var breastfeedingTrackerCard: some View {
+        Button(action: {
+            showBreastfeedingTracker = true
+        }) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.teal.opacity(0.7))
+                
+                HStack {
+                    Image(systemName: "timer")
+                        .font(.system(size: 30))
+                        .foregroundColor(.white)
+                        .padding(.trailing, 10)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Breastfeeding Tracker")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(.white)
+                        
+                        Text("Track feedings and analyze patterns")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .sheet(isPresented: $showBreastfeedingTracker) {
+            BreastfeedingTrackerView(babyName: babyProfile.name)
         }
     }
 }
@@ -2829,6 +2873,1023 @@ struct VitalMonitoringView: View {
         } else {
             return "just now"
         }
+    }
+}
+
+// Add the BreastfeedingTrackerView implementation at the end of the file
+// BreastfeedingTrackerView
+struct BreastfeedingTrackerView: View {
+    @Environment(\.presentationMode) var presentationMode
+    
+    let babyName: String
+    
+    // Session state
+    @State private var isSessionActive = false
+    @State private var currentBreast: BreastSide = .left
+    @State private var sessionStartTime: Date = Date()
+    @State private var elapsedSeconds: Int = 0
+    @State private var timer: Timer? = nil
+    
+    // History and analytics
+    @State private var feedingSessions: [FeedingSession] = []
+    @State private var isLoading = true
+    @State private var selectedTimeframe: Timeframe = .week
+    @State private var showAddManualSession = false
+    
+    // UI state
+    @State private var selectedTab: TabSection = .timer
+    
+    enum BreastSide: String, CaseIterable {
+        case left = "Left"
+        case right = "Right"
+        
+        var color: Color {
+            self == .left ? .blue : .red
+        }
+        
+        var icon: String {
+            "drop.fill"
+        }
+    }
+    
+    enum Timeframe: String, CaseIterable {
+        case day = "Today"
+        case week = "Week"
+        case month = "Month"
+        
+        var days: Int {
+            switch self {
+            case .day: return 1
+            case .week: return 7
+            case .month: return 30
+            }
+        }
+    }
+    
+    enum TabSection: String, CaseIterable {
+        case timer = "Timer"
+        case history = "History"
+        case analytics = "Analytics"
+    }
+    
+    struct FeedingSession: Identifiable, Codable {
+        let id: String
+        let startTime: Date
+        let duration: Int // seconds
+        let breast: String
+        let notes: String
+        
+        var formattedDuration: String {
+            let minutes = duration / 60
+            let seconds = duration % 60
+            return String(format: "%d:%02d", minutes, seconds)
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Tab selector
+                HStack {
+                    ForEach(TabSection.allCases, id: \.self) { tab in
+                        tabButton(for: tab)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                .padding(.bottom, 5)
+                .background(Color.white)
+                
+                // Main content based on selected tab
+                if isLoading {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            switch selectedTab {
+                            case .timer:
+                                timerView
+                            case .history:
+                                historyView
+                            case .analytics:
+                                analyticsView
+                            }
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .navigationTitle("\(babyName)'s Feeding Tracker")
+            .navigationBarItems(trailing: Button("Close") {
+                if isSessionActive {
+                    // Show confirmation dialog if a session is active
+                    // For simplicity, we'll just stop the session
+                    stopSession()
+                }
+                presentationMode.wrappedValue.dismiss()
+            })
+            .onAppear {
+                loadSessions()
+            }
+            .onDisappear {
+                timer?.invalidate()
+            }
+            .sheet(isPresented: $showAddManualSession) {
+                manualSessionEntryView
+            }
+        }
+    }
+    
+    // MARK: - Tab Views
+    
+    private var timerView: some View {
+        VStack(spacing: 25) {
+            // Timer display
+            ZStack {
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            gradient: Gradient(colors: [.blue, .purple, .red]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 8
+                    )
+                    .padding(20)
+                
+                VStack(spacing: 10) {
+                    Text(isSessionActive ? "Feeding in progress" : "Ready to start")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    Text(formattedTime(seconds: elapsedSeconds))
+                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                    
+                    if isSessionActive {
+                        Text("\(currentBreast.rawValue) breast")
+                            .font(.subheadline)
+                            .foregroundColor(currentBreast.color)
+                            .padding(.vertical, 5)
+                            .padding(.horizontal, 15)
+                            .background(currentBreast.color.opacity(0.1))
+                            .cornerRadius(15)
+                    }
+                }
+            }
+            .frame(height: 280)
+            
+            // Breast side selection
+            if !isSessionActive {
+                VStack(spacing: 10) {
+                    Text("Choose breast side")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    HStack(spacing: 15) {
+                        ForEach(BreastSide.allCases, id: \.self) { side in
+                            Button(action: {
+                                currentBreast = side
+                            }) {
+                                VStack(spacing: 8) {
+                                    Image(systemName: side.icon)
+                                        .font(.system(size: 24))
+                                    
+                                    Text(side.rawValue)
+                                        .font(.system(size: 16, weight: .medium))
+                                }
+                                .foregroundColor(side == currentBreast ? side.color : .gray)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 15)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(side == currentBreast ? side.color.opacity(0.1) : Color(.systemGray6))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(side == currentBreast ? side.color : Color.clear, lineWidth: 2)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Action buttons
+            HStack(spacing: 20) {
+                if isSessionActive {
+                    // Switch breast button
+                    Button(action: {
+                        switchBreast()
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.left.arrow.right")
+                            Text("Switch")
+                        }
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(Color.orange)
+                        .cornerRadius(12)
+                    }
+                    
+                    // Stop button
+                    Button(action: {
+                        stopSession()
+                    }) {
+                        HStack {
+                            Image(systemName: "stop.fill")
+                            Text("Stop")
+                        }
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(Color.red)
+                        .cornerRadius(12)
+                    }
+                } else {
+                    // Start button
+                    Button(action: {
+                        startSession()
+                    }) {
+                        HStack {
+                            Image(systemName: "play.fill")
+                            Text("Start Feeding")
+                        }
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(currentBreast.color)
+                        .cornerRadius(12)
+                    }
+                }
+            }
+            
+            // Quick stats or manual entry
+            if !isSessionActive {
+                VStack(spacing: 15) {
+                    Button(action: {
+                        showAddManualSession = true
+                    }) {
+                        Text("Add Manual Entry")
+                            .font(.system(size: 16))
+                            .foregroundColor(.teal)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.teal.opacity(0.1))
+                            .cornerRadius(10)
+                    }
+                    
+                    if !feedingSessions.isEmpty {
+                        recentStatsView
+                    }
+                }
+                .padding(.top, 10)
+            }
+        }
+    }
+    
+    private var recentStatsView: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Text("Recent Stats")
+                .font(.headline)
+                .foregroundColor(.secondary)
+            
+            HStack(spacing: 15) {
+                statsCard(
+                    value: "\(todaySessionCount)",
+                    title: "Today",
+                    icon: "calendar",
+                    color: .blue
+                )
+                
+                statsCard(
+                    value: avgDurationFormatted,
+                    title: "Avg Duration",
+                    icon: "clock",
+                    color: .purple
+                )
+                
+                statsCard(
+                    value: "\(feedingSessions.filter { Calendar.current.isDateInToday($0.startTime) }.reduce(0, { $0 + $1.duration }) / 60) min",
+                    title: "Total Today",
+                    icon: "sum",
+                    color: .green
+                )
+            }
+        }
+    }
+    
+    private var historyView: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Feeding History")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            if feedingSessions.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 10) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 50))
+                            .foregroundColor(.gray.opacity(0.5))
+                        
+                        Text("No feeding sessions recorded yet")
+                            .font(.headline)
+                            .foregroundColor(.gray)
+                        
+                        Text("Use the Timer tab to record your first session")
+                            .font(.subheadline)
+                            .foregroundColor(.gray.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 50)
+                    Spacer()
+                }
+            } else {
+                ForEach(groupedSessionsByDay().keys.sorted(by: >), id: \.self) { day in
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(formatDate(day))
+                            .font(.headline)
+                            .padding(.vertical, 5)
+                        
+                        ForEach(groupedSessionsByDay()[day] ?? [], id: \.id) { session in
+                            sessionRow(session: session)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private var analyticsView: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Timeframe selector
+            HStack {
+                Text("Analytics")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Spacer()
+                
+                Picker("Timeframe", selection: $selectedTimeframe) {
+                    ForEach(Timeframe.allCases, id: \.self) { timeframe in
+                        Text(timeframe.rawValue).tag(timeframe)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .frame(width: 200)
+            }
+            
+            if filteredSessions.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 10) {
+                        Image(systemName: "chart.bar.xaxis")
+                            .font(.system(size: 50))
+                            .foregroundColor(.gray.opacity(0.5))
+                        
+                        Text("Not enough data")
+                            .font(.headline)
+                            .foregroundColor(.gray)
+                        
+                        Text("Record more feeding sessions to see analytics")
+                            .font(.subheadline)
+                            .foregroundColor(.gray.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 50)
+                    Spacer()
+                }
+            } else {
+                // Stats cards
+                HStack(spacing: 12) {
+                    analyticsCard(
+                        title: "Feedings",
+                        value: "\(filteredSessions.count)",
+                        subtitle: "Total sessions",
+                        color: .blue
+                    )
+                    
+                    analyticsCard(
+                        title: "Minutes",
+                        value: "\(filteredTotalMinutes)",
+                        subtitle: "Total time",
+                        color: .purple
+                    )
+                    
+                    analyticsCard(
+                        title: "Per Day",
+                        value: String(format: "%.1f", filteredSessionsPerDay),
+                        subtitle: "Average",
+                        color: .green
+                    )
+                }
+                
+                // Feeding distribution
+                breastDistributionView
+                
+                // Time of day distribution
+                timeOfDayDistributionView
+                
+                // Duration trend
+                durationTrendView
+            }
+        }
+    }
+    
+    private var manualSessionEntryView: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Session Details")) {
+                    DatePicker("Date & Time", selection: .constant(Date()))
+                    
+                    Picker("Breast", selection: .constant(BreastSide.left)) {
+                        ForEach(BreastSide.allCases, id: \.self) { side in
+                            Text(side.rawValue).tag(side)
+                        }
+                    }
+                    
+                    HStack {
+                        Text("Duration")
+                        Spacer()
+                        
+                        Picker("Minutes", selection: .constant(10)) {
+                            ForEach(0..<60) { min in
+                                Text("\(min) min").tag(min)
+                            }
+                        }
+                        .pickerStyle(WheelPickerStyle())
+                        .frame(width: 100, height: 100)
+                        .clipped()
+                        
+                        Text(":")
+                        
+                        Picker("Seconds", selection: .constant(0)) {
+                            ForEach(0..<60) { sec in
+                                Text("\(sec) sec").tag(sec)
+                            }
+                        }
+                        .pickerStyle(WheelPickerStyle())
+                        .frame(width: 100, height: 100)
+                        .clipped()
+                    }
+                }
+                
+                Section(header: Text("Notes")) {
+                    TextEditor(text: .constant(""))
+                        .frame(height: 100)
+                }
+                
+                Section {
+                    Button("Save Session") {
+                        // Save logic would go here
+                        showAddManualSession = false
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .foregroundColor(.teal)
+                }
+            }
+            .navigationTitle("Add Feeding")
+            .navigationBarItems(trailing: Button("Cancel") {
+                showAddManualSession = false
+            })
+        }
+    }
+    
+    // MARK: - Component Views
+    
+    private func tabButton(for tab: TabSection) -> some View {
+        Button(action: {
+            withAnimation {
+                selectedTab = tab
+            }
+        }) {
+            VStack(spacing: 8) {
+                Image(systemName: iconFor(tab))
+                    .font(.system(size: 20))
+                Text(tab.rawValue)
+                    .font(.system(size: 12))
+            }
+            .foregroundColor(selectedTab == tab ? .teal : .gray)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                selectedTab == tab ?
+                    Color.teal.opacity(0.1) :
+                    Color.clear
+            )
+            .cornerRadius(10)
+        }
+    }
+    
+    private func sessionRow(session: FeedingSession) -> some View {
+        HStack {
+            // Time
+            VStack(alignment: .leading) {
+                Text(formatTime(session.startTime))
+                    .font(.system(size: 16, weight: .medium))
+                
+                Text(session.formattedDuration)
+                    .font(.system(size: 14))
+                    .foregroundColor(.gray)
+            }
+            
+            Spacer()
+            
+            // Breast indicator
+            Text(session.breast)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(session.breast == "Left" ? .blue : .red)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    (session.breast == "Left" ? Color.blue : Color.red)
+                        .opacity(0.1)
+                )
+                .cornerRadius(8)
+            
+            // Notes indicator if present
+            if !session.notes.isEmpty {
+                Image(systemName: "note.text")
+                    .foregroundColor(.gray)
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+    
+    private func statsCard(value: String, title: String, icon: String, color: Color) -> some View {
+        VStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(.system(size: 16, weight: .bold))
+            
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundColor(.gray)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(color.opacity(0.1))
+        .cornerRadius(12)
+    }
+    
+    private func analyticsCard(title: String, value: String, subtitle: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 14))
+                .foregroundColor(.gray)
+            
+            Text(value)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(color)
+            
+            Text(subtitle)
+                .font(.system(size: 12))
+                .foregroundColor(.gray)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+    
+    private var breastDistributionView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Breast Distribution")
+                .font(.headline)
+            
+            HStack(spacing: 0) {
+                // Left breast percentage
+                let leftPercentage = breastDistribution.left
+                
+                Text("Left")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.blue)
+                    .frame(width: 40, alignment: .leading)
+                
+                ZStack(alignment: .leading) {
+                    // Background bar
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 20)
+                    
+                    // Filled portion
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.blue)
+                        .frame(width: max(5, (CGFloat(leftPercentage) / 100) * (UIScreen.main.bounds.width - 110)), height: 20)
+                }
+                
+                Text("\(Int(leftPercentage))%")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.blue)
+                    .frame(width: 40, alignment: .trailing)
+            }
+            
+            HStack(spacing: 0) {
+                // Right breast percentage
+                let rightPercentage = breastDistribution.right
+                
+                Text("Right")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.red)
+                    .frame(width: 40, alignment: .leading)
+                
+                ZStack(alignment: .leading) {
+                    // Background bar
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 20)
+                    
+                    // Filled portion
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.red)
+                        .frame(width: max(5, (CGFloat(rightPercentage) / 100) * (UIScreen.main.bounds.width - 110)), height: 20)
+                }
+                
+                Text("\(Int(rightPercentage))%")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.red)
+                    .frame(width: 40, alignment: .trailing)
+            }
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+    
+    private var timeOfDayDistributionView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Time of Day")
+                .font(.headline)
+            
+            HStack(spacing: 5) {
+                ForEach(timeOfDayDistribution.indices, id: \.self) { index in
+                    let count = timeOfDayDistribution[index]
+                    let maxCount = timeOfDayDistribution.max() ?? 1
+                    let height = max(30, CGFloat(count) / CGFloat(maxCount) * 100)
+                    
+                    VStack {
+                        Spacer()
+                        
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(colorForTimeOfDay(index))
+                            .frame(height: height)
+                        
+                        Text(timeOfDayLabel(index))
+                            .font(.system(size: 10))
+                            .foregroundColor(.gray)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 130)
+                }
+            }
+            .padding(.top, 10)
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+    
+    private var durationTrendView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Duration Trend")
+                .font(.headline)
+            
+            if durationTrend.count > 1 {
+                VStack(spacing: 30) {
+                    // Line chart
+                    GeometryReader { geometry in
+                        Path { path in
+                            let maxDuration = durationTrend.map { $0.1 }.max() ?? 60
+                            let minDuration = durationTrend.map { $0.1 }.min() ?? 0
+                            let range = max(1, maxDuration - minDuration)
+                            
+                            let step = geometry.size.width / CGFloat(durationTrend.count - 1)
+                            var xPosition: CGFloat = 0
+                            
+                            for i in 0..<durationTrend.count {
+                                let duration = durationTrend[i].1
+                                let point = CGPoint(
+                                    x: xPosition,
+                                    y: geometry.size.height - CGFloat(duration - minDuration) / CGFloat(range) * geometry.size.height
+                                )
+                                
+                                if i == 0 {
+                                    path.move(to: point)
+                                } else {
+                                    path.addLine(to: point)
+                                }
+                                
+                                xPosition += step
+                            }
+                        }
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.blue, .purple]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                        )
+                    }
+                    .frame(height: 100)
+                    
+                    // Date labels
+                    HStack {
+                        ForEach(0..<min(durationTrend.count, 5), id: \.self) { i in
+                            let index = i * (durationTrend.count / max(4, durationTrend.count - 1))
+                            if index < durationTrend.count {
+                                Text(formatShortDate(durationTrend[index].0))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.gray)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("Need more data points for trend analysis")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            }
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+    
+    // MARK: - Timer Actions
+    
+    private func startSession() {
+        sessionStartTime = Date()
+        elapsedSeconds = 0
+        isSessionActive = true
+        
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            elapsedSeconds += 1
+        }
+    }
+    
+    private func stopSession() {
+        isSessionActive = false
+        timer?.invalidate()
+        timer = nil
+        
+        // Create and save the session
+        let session = FeedingSession(
+            id: UUID().uuidString,
+            startTime: sessionStartTime,
+            duration: elapsedSeconds,
+            breast: currentBreast.rawValue,
+            notes: ""
+        )
+        
+        feedingSessions.insert(session, at: 0)
+        saveSessions()
+        
+        // Reset timer
+        elapsedSeconds = 0
+    }
+    
+    private func switchBreast() {
+        currentBreast = currentBreast == .left ? .right : .left
+    }
+    
+    // MARK: - Data Handling
+    
+    private func loadSessions() {
+        // Simulate loading from database
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // Generate some sample data for demonstration
+            if feedingSessions.isEmpty {
+                generateSampleData()
+            }
+            
+            isLoading = false
+        }
+    }
+    
+    private func saveSessions() {
+        // Would save to database or UserDefaults
+        // For demo, we're just updating the array in memory
+    }
+    
+    private func generateSampleData() {
+        // Create sample feeding sessions for the past week
+        let now = Date()
+        let calendar = Calendar.current
+        var tempSessions: [FeedingSession] = []
+        
+        // Generate 6-8 feedings per day for the past 7 days
+        for dayOffset in 0..<7 {
+            let sessionsCount = Int.random(in: 6...8)
+            
+            for sessionIndex in 0..<sessionsCount {
+                // Create fairly regular timing pattern
+                let baseHours = [1, 4, 7, 10, 13, 16, 19, 22]
+                let hourOffset = Double.random(in: -0.5...0.5)
+                let hour = baseHours[min(sessionIndex, baseHours.count - 1)]
+                let date = calendar.date(
+                    byAdding: .day,
+                    value: -dayOffset,
+                    to: calendar.startOfDay(for: now)
+                ) ?? now
+                
+                let sessionDate = calendar.date(
+                    byAdding: .hour,
+                    value: hour,
+                    to: date
+                ) ?? date
+                
+                let adjustedDate = calendar.date(
+                    byAdding: .minute,
+                    value: Int(hourOffset * 60),
+                    to: sessionDate
+                ) ?? sessionDate
+                
+                // Generate alternate breast sides
+                let breastSide = sessionIndex % 2 == 0 ? BreastSide.left : BreastSide.right
+                
+                // Duration between 5-20 minutes
+                let duration = Int.random(in: 300...1200)
+                
+                let session = FeedingSession(
+                    id: UUID().uuidString,
+                    startTime: adjustedDate,
+                    duration: duration,
+                    breast: breastSide.rawValue,
+                    notes: ""
+                )
+                
+                tempSessions.append(session)
+            }
+        }
+        
+        // Sort by most recent first
+        feedingSessions = tempSessions.sorted(by: { $0.startTime > $1.startTime })
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func iconFor(_ tab: TabSection) -> String {
+        switch tab {
+        case .timer: return "timer"
+        case .history: return "list.bullet"
+        case .analytics: return "chart.bar"
+        }
+    }
+    
+    private func formattedTime(seconds: Int) -> String {
+        let minutes = seconds / 60
+        let remainingSeconds = seconds % 60
+        return String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEEE, MMM d"
+            return formatter.string(from: date)
+        }
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: date)
+    }
+    
+    private func formatShortDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd"
+        return formatter.string(from: date)
+    }
+    
+    private func groupedSessionsByDay() -> [Date: [FeedingSession]] {
+        let calendar = Calendar.current
+        var result: [Date: [FeedingSession]] = [:]
+        
+        for session in feedingSessions {
+            let startOfDay = calendar.startOfDay(for: session.startTime)
+            if result[startOfDay] == nil {
+                result[startOfDay] = []
+            }
+            result[startOfDay]?.append(session)
+        }
+        
+        return result
+    }
+    
+    private func colorForTimeOfDay(_ index: Int) -> Color {
+        let colors: [Color] = [.blue, .purple, .red, .orange, .yellow, .green]
+        return colors[index % colors.count]
+    }
+    
+    private func timeOfDayLabel(_ index: Int) -> String {
+        let times = ["12am-4am", "4am-8am", "8am-12pm", "12pm-4pm", "4pm-8pm", "8pm-12am"]
+        return times[index]
+    }
+    
+    // MARK: - Computed Properties
+    
+    private var filteredSessions: [FeedingSession] {
+        let calendar = Calendar.current
+        let startDate = calendar.date(
+            byAdding: .day,
+            value: -(selectedTimeframe.days - 1),
+            to: calendar.startOfDay(for: Date())
+        ) ?? Date()
+        
+        return feedingSessions.filter { $0.startTime >= startDate }
+    }
+    
+    private var breastDistribution: (left: Double, right: Double) {
+        let leftCount = Double(filteredSessions.filter { $0.breast == "Left" }.count)
+        let rightCount = Double(filteredSessions.filter { $0.breast == "Right" }.count)
+        let total = leftCount + rightCount
+        
+        if total == 0 {
+            return (50, 50)
+        }
+        
+        return (
+            (leftCount / total) * 100,
+            (rightCount / total) * 100
+        )
+    }
+    
+    private var timeOfDayDistribution: [Int] {
+        var counts = [0, 0, 0, 0, 0, 0] // 6 time periods
+        
+        for session in filteredSessions {
+            let hour = Calendar.current.component(.hour, from: session.startTime)
+            let index = hour / 4 // Divide the day into 6 parts
+            if index >= 0 && index < counts.count {
+                counts[index] += 1
+            }
+        }
+        
+        return counts
+    }
+    
+    private var durationTrend: [(Date, Int)] {
+        let groupedByDay = groupedSessionsByDay()
+        let sortedDays = groupedByDay.keys.sorted()
+        
+        return sortedDays.map { day in
+            let sessions = groupedByDay[day] ?? []
+            let totalDuration = sessions.reduce(0) { $0 + $1.duration }
+            let avgDuration = sessions.isEmpty ? 0 : totalDuration / sessions.count
+            return (day, avgDuration / 60) // Convert to minutes
+        }
+    }
+    
+    private var todaySessionCount: Int {
+        return feedingSessions.filter {
+            Calendar.current.isDateInToday($0.startTime)
+        }.count
+    }
+    
+    private var avgDurationFormatted: String {
+        let totalDuration = feedingSessions.reduce(0) { $0 + $1.duration }
+        if feedingSessions.isEmpty {
+            return "0:00"
+        }
+        let avgSeconds = totalDuration / feedingSessions.count
+        return formattedTime(seconds: avgSeconds)
+    }
+    
+    private var filteredTotalMinutes: Int {
+        return filteredSessions.reduce(0) { $0 + $1.duration } / 60
+    }
+    
+    private var filteredSessionsPerDay: Double {
+        let days = Double(selectedTimeframe.days)
+        return Double(filteredSessions.count) / days
     }
 }
 

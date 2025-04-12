@@ -3,11 +3,23 @@ import GoogleGenerativeAI
 import FirebaseAuth
 import FirebaseFirestore
 
+// Message with feedback support
 struct Message: Identifiable {
     let id = UUID()
     let content: String
     let isUser: Bool
     let date = Date()
+    var feedback: MessageFeedback = .none
+}
+
+// Feedback options for AI responses
+enum MessageFeedback: String, CaseIterable {
+    case none = "None"
+    case helpful = "Helpful"
+    case notHelpful = "Not Helpful"
+    case tooGeneral = "Too General"
+    case needsMoreInfo = "Needs More Info"
+    case inaccurate = "Inaccurate"
 }
 
 // User context to provide to the AI
@@ -68,6 +80,12 @@ struct MaatriView: View {
     @State private var isLoading = false
     @State private var userContext = UserHealthContext()
     @State private var isContextLoaded = false
+    @State private var showSuggestions = true
+    @State private var animateGradient = false
+    @State private var showFeedbackSheet = false
+    @State private var currentFeedbackMessage: Message? = nil
+    @State private var conversationTopics: [String] = []
+    @State private var conversationSummary: String = ""
     
     // Initialize Gemini model with API key
     private let apiKey = "AIzaSyCueBkZoml0YMVXHxtMZeE7Xn-0iqDRpGU"
@@ -76,81 +94,94 @@ struct MaatriView: View {
         return GenerativeModel(name: "gemini-1.5-pro", apiKey: apiKey, generationConfig: config)
     }
     
+    // Suggested questions based on pregnancy stage
+    private var suggestedQuestions: [String] {
+        if userContext.currentPregnancyWeek < 1 {
+            return [
+                "How can I improve my chances of conception?",
+                "What lifestyle changes help with fertility?",
+                "When should I take a pregnancy test?"
+            ]
+        } else if userContext.currentPregnancyWeek < 14 {
+            return [
+                "What symptoms are normal in the first trimester?",
+                "How can I manage morning sickness?",
+                "What foods should I avoid during pregnancy?"
+            ]
+        } else if userContext.currentPregnancyWeek < 27 {
+            return [
+                "When will I feel the baby move?",
+                "What exercises are safe in the second trimester?",
+                "What should I include in my birth plan?"
+            ]
+        } else {
+            return [
+                "How can I recognize signs of labor?",
+                "What should I pack in my hospital bag?",
+                "How can I prepare for breastfeeding?"
+            ]
+        }
+    }
+    
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                // Welcome message header
-                if messages.isEmpty {
-                    welcomeView
-                }
-                
-                // Chat messages
-                ScrollViewReader { scrollView in
-                    List {
-                        ForEach(messages) { message in
-                            MessageBubble(message: message)
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                        }
-                        if isLoading {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                    .padding()
-                                Spacer()
-                            }
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                        }
-                    }
-                    .listStyle(PlainListStyle())
-                    .onChange(of: messages.count) { _ in
-                        if let lastID = messages.last?.id {
-                            withAnimation {
-                                scrollView.scrollTo(lastID, anchor: .bottom)
-                            }
-                        }
+            ZStack {
+                // Background gradient
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(#colorLiteral(red: 0.9921568627, green: 0.9098039216, blue: 0.9568627451, alpha: 1)),
+                        Color(#colorLiteral(red: 1, green: 0.9686274529, blue: 0.9764705896, alpha: 1)),
+                        Color(#colorLiteral(red: 0.9764705896, green: 0.9568627477, blue: 1, alpha: 1))
+                    ]),
+                    startPoint: animateGradient ? .topLeading : .bottomLeading,
+                    endPoint: animateGradient ? .bottomTrailing : .topTrailing
+                )
+                .edgesIgnoringSafeArea(.all)
+                .onAppear {
+                    withAnimation(.linear(duration: 5.0).repeatForever(autoreverses: true)) {
+                        animateGradient.toggle()
                     }
                 }
                 
-                // User context info indicator
-                if isContextLoaded {
-                    HStack {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundColor(.pink)
-                        Text("AI has your pregnancy data")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 5)
-                }
-                
-                // Input area
                 VStack(spacing: 0) {
-                    Divider()
-                    HStack {
-                        TextField("Ask Maatri...", text: $inputText)
-                            .padding(.horizontal)
-                            .padding(.vertical, 12)
-                            .background(Color(.systemGray6).opacity(0.5))
-                            .cornerRadius(25)
-                            .disabled(isLoading)
-                        
-                        Button(action: sendMessage) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 30))
-                                .foregroundColor(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.pink)
-                        }
-                        .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+                    // Chat messages
+                    if messages.isEmpty {
+                        welcomeView
+                    } else {
+                        chatView
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(Color.white)
+                    
+                    // Input area with suggestions
+                    inputArea
                 }
             }
             .navigationTitle("Maatri")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showSuggestions.toggle()
+                    }) {
+                        Image(systemName: showSuggestions ? "lightbulb.fill" : "lightbulb")
+                            .foregroundColor(.pink)
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        saveConversation()
+                    }) {
+                        Image(systemName: "square.and.arrow.down")
+                            .foregroundColor(.pink)
+                    }
+                    .disabled(messages.count < 3)
+                }
+            }
+            .sheet(isPresented: $showFeedbackSheet) {
+                if let message = currentFeedbackMessage {
+                    feedbackView(for: message)
+                }
+            }
             .onAppear {
                 if messages.isEmpty {
                     addInitialMessage()
@@ -161,29 +192,357 @@ struct MaatriView: View {
         }
     }
     
+    // Enhanced welcome view
     private var welcomeView: some View {
-        VStack(spacing: 15) {
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 70))
-                .foregroundColor(.pink.opacity(0.7))
-                .padding()
+        VStack(spacing: 25) {
+            // Logo animation
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            gradient: Gradient(colors: [Color.pink.opacity(0.2), Color.pink.opacity(0.0)]),
+                            center: .center,
+                            startRadius: 50,
+                            endRadius: 120
+                        )
+                    )
+                    .frame(width: 180, height: 180)
+                
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 100, height: 100)
+                    .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+                
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 45, weight: .medium))
+                    .foregroundColor(.pink)
+            }
             
-            Text("Maatri AI Assistant")
-                .font(AppFont.titleMedium())
-                .foregroundColor(.black)
+            Text("Maatri AI")
+                .font(.system(size: 32, weight: .bold))
+                .foregroundColor(Color(#colorLiteral(red: 0.8392156863, green: 0.1882352941, blue: 0.4, alpha: 1)))
             
-            Text("Your personal maternal health assistant powered by AI")
-                .font(AppFont.body())
-                .foregroundColor(.gray)
+            Text("Your personal maternal health assistant")
+                .font(.system(size: 18))
+                .foregroundColor(Color.gray)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
+            
+            if isContextLoaded {
+                contextInfoCard
+                    .padding(.top, 10)
+            }
+            
+            Text("Here's how I can help you today:")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(Color.gray)
+                .padding(.top, 20)
+            
+            // Feature cards
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 15) {
+                featureCard(title: "Pregnancy Advice", icon: "heart.text.square")
+                featureCard(title: "Symptom Guidance", icon: "cross.case")
+                featureCard(title: "Development Tracking", icon: "chart.xyaxis.line")
+                featureCard(title: "Nutrition Tips", icon: "fork.knife")
+            }
+            .padding(.horizontal)
+            
+            Spacer()
         }
-        .padding(.vertical, 40)
+        .padding(.top, 40)
     }
     
+    // Feature card for welcome screen
+    private func featureCard(title: String, icon: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 24))
+                .foregroundColor(.pink)
+            
+            Text(title)
+                .font(.system(size: 14, weight: .medium))
+                .multilineTextAlignment(.center)
+        }
+        .frame(height: 90)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+        )
+    }
+    
+    // User context summary card
+    private var contextInfoCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if userContext.currentPregnancyWeek > 0 {
+                HStack {
+                    Label(
+                        title: { Text("Week \(userContext.currentPregnancyWeek)") },
+                        icon: { Image(systemName: "calendar") }
+                    )
+                    .foregroundColor(.pink)
+                    
+                    Spacer()
+                    
+                    Text(userContext.trimester + " Trimester")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+            } else {
+                HStack {
+                    Label(
+                        title: { Text("Planning") },
+                        icon: { Image(systemName: "chart.bar") }
+                    )
+                    .foregroundColor(.pink)
+                }
+            }
+            
+            if !userContext.recentHealthMetrics.isEmpty {
+                Divider()
+                    .padding(.vertical, 2)
+                
+                HStack {
+                    ForEach(Array(userContext.recentHealthMetrics.prefix(2)), id: \.key) { key, value in
+                        Label(
+                            title: { Text(value) },
+                            icon: { Image(systemName: healthMetricIcon(for: key)) }
+                        )
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 13))
+                        
+                        if key != Array(userContext.recentHealthMetrics.prefix(2)).last?.key {
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        )
+        .padding(.horizontal, 20)
+    }
+    
+    // Icon for health metric
+    private func healthMetricIcon(for metric: String) -> String {
+        switch metric {
+        case "Heart Rate": return "heart.fill"
+        case "Temperature": return "thermometer"
+        case "SpO2": return "lungs.fill"
+        case "Contraction Intensity": return "waveform.path"
+        default: return "staroflife"
+        }
+    }
+    
+    // Enhanced chat view with feedback options
+    private var chatView: some View {
+        ScrollViewReader { scrollView in
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    ForEach(messages) { message in
+                        VStack(alignment: .leading, spacing: 0) {
+                            MessageBubble(message: message)
+                            
+                            // Feedback options for AI responses
+                            if !message.isUser && message.feedback == .none {
+                                HStack {
+                                    Spacer()
+                                    
+                                    Text("Was this helpful?")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                        .padding(.trailing, 4)
+                                    
+                                    Button(action: {
+                                        provideFeedback(for: message, feedback: .helpful)
+                                    }) {
+                                        Image(systemName: "hand.thumbsup")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(.gray)
+                                            .padding(5)
+                                    }
+                                    
+                                    Button(action: {
+                                        currentFeedbackMessage = message
+                                        showFeedbackSheet = true
+                                    }) {
+                                        Image(systemName: "hand.thumbsdown")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(.gray)
+                                            .padding(5)
+                                    }
+                                }
+                                .padding(.trailing, 16)
+                            }
+                            
+                            // Show feedback badge if provided
+                            if message.feedback != .none && !message.isUser {
+                                HStack {
+                                    Spacer()
+                                    
+                                    if message.feedback == .helpful {
+                                        Label("Helpful", systemImage: "checkmark.circle.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.green)
+                                            .padding(.vertical, 4)
+                                            .padding(.horizontal, 8)
+                                            .background(
+                                                Capsule()
+                                                    .fill(Color.green.opacity(0.1))
+                                            )
+                                    } else {
+                                        Text(message.feedback.rawValue)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.orange)
+                                            .padding(.vertical, 4)
+                                            .padding(.horizontal, 8)
+                                            .background(
+                                                Capsule()
+                                                    .fill(Color.orange.opacity(0.1))
+                                            )
+                                    }
+                                }
+                                .padding(.trailing, 16)
+                            }
+                        }
+                    }
+                    
+                    if isLoading {
+                        typingIndicator
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                .padding(.bottom, showSuggestions ? 16 : 68)
+            }
+            .onChange(of: messages.count) { _ in
+                if let lastID = messages.last?.id {
+                    withAnimation {
+                        scrollView.scrollTo(lastID, anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .background(Color.clear)
+    }
+    
+    // Typing indicator
+    private var typingIndicator: some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            Image(systemName: "brain.head.profile")
+                .font(.system(size: 18))
+                .foregroundColor(.pink)
+                .padding(8)
+                .background(Circle().fill(Color.white))
+            
+            HStack(spacing: 4) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .fill(Color.pink.opacity(0.6))
+                        .frame(width: 6, height: 6)
+                        .offset(y: index % 2 == 0 ? -2 : 2)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.systemGray6))
+            )
+            
+            Spacer()
+        }
+    }
+    
+    // Enhanced input area
+    private var inputArea: some View {
+        VStack(spacing: 0) {
+            // Suggestion chips
+            if showSuggestions && messages.count > 0 && !isLoading {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(suggestedQuestions, id: \.self) { question in
+                            Button(action: {
+                                inputText = question
+                                sendMessage()
+                            }) {
+                                Text(question)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.pink)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        Capsule()
+                                            .stroke(Color.pink.opacity(0.3), lineWidth: 1.5)
+                                            .background(Capsule().fill(Color.white.opacity(0.7)))
+                                    )
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                }
+                .background(
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color.white.opacity(0.95),
+                                    Color.white
+                                ]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .shadow(color: Color.black.opacity(0.05), radius: 5, y: -5)
+                )
+            }
+            
+            // Text input and send button
+            HStack(spacing: 12) {
+                HStack {
+                    TextField("Ask Maatri...", text: $inputText)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 25)
+                                .fill(Color.white)
+                                .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+                        )
+                        .disabled(isLoading)
+                }
+                
+                Button(action: sendMessage) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.pink)
+                            .frame(width: 44, height: 44)
+                            .shadow(color: Color.pink.opacity(0.3), radius: 5, x: 0, y: 3)
+                        
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                }
+                .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+                .opacity(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 12)
+            .background(Color.white)
+            .shadow(color: Color.black.opacity(0.05), radius: 5, y: -5)
+        }
+    }
+    
+    // Add welcome message
     private func addInitialMessage() {
         let welcomeMessage = Message(
-            content: "Hello, I'm Maatri, your maternal health assistant. How can I help you today?",
+            content: "Hello! I'm Maatri, your personal maternal health assistant. I'm here to support you on your pregnancy journey with reliable information and guidance. How can I help you today?",
             isUser: false
         )
         messages.append(welcomeMessage)
@@ -323,6 +682,7 @@ struct MaatriView: View {
             }
     }
     
+    // Enhanced sendMessage to include previous messages for context
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         
@@ -333,17 +693,38 @@ struct MaatriView: View {
         inputText = ""
         isLoading = true
         
-        // Generate a response using Gemini with user context
+        // Generate a response using Gemini with enhanced context
         Task {
             do {
-                // Include user context in the prompt
+                // Include user context and conversation history
                 let contextInfo = userContext.toPromptText()
+                
+                // Include the last 5 messages for context
+                var conversationHistory = ""
+                let recentMessages = messages.suffix(min(5, messages.count - 1)) // Exclude the message just added
+                for message in recentMessages {
+                    let role = message.isUser ? "User" : "Maatri"
+                    conversationHistory += "\(role): \(message.content)\n\n"
+                }
+                
+                // Check for any negative feedback to improve responses
+                let feedbackMessages = messages.filter { !$0.isUser && $0.feedback != .none && $0.feedback != .helpful }
+                var feedbackGuidance = ""
+                if !feedbackMessages.isEmpty {
+                    feedbackGuidance = "\nPrevious responses have received feedback indicating they were: "
+                    let feedbackTypes = Set(feedbackMessages.map { $0.feedback.rawValue })
+                    feedbackGuidance += feedbackTypes.joined(separator: ", ")
+                    feedbackGuidance += ". Please ensure your response addresses these concerns."
+                }
                 
                 let prompt = """
                 You are Maatri, a compassionate and informative maternal health assistant specialized in pregnancy, fertility, and maternal care. 
                 
                 Here is information about the user you're helping:
                 \(contextInfo)
+                
+                Recent conversation history:
+                \(conversationHistory)
                 
                 Answer the following message from this user who is using the MaaKosh app for maternal health tracking:
 
@@ -354,6 +735,7 @@ struct MaatriView: View {
                 Focus on providing evidence-based information about maternal health, pregnancy, and conception.
                 If the user asks something outside your expertise, politely suggest consulting a healthcare provider.
                 Do not explicitly mention that you have their health context or data in your response, just use it to personalize your answer.
+                \(feedbackGuidance)
                 """
                 
                 let response = try await model.generateContent(prompt)
@@ -362,6 +744,9 @@ struct MaatriView: View {
                     DispatchQueue.main.async {
                         messages.append(Message(content: responseText, isUser: false))
                         isLoading = false
+                        
+                        // Analyze the conversation topics in background
+                        analyzeConversationTopics()
                     }
                 } else {
                     handleError("Could not generate a response")
@@ -370,6 +755,52 @@ struct MaatriView: View {
                 handleError(error.localizedDescription)
             }
         }
+    }
+    
+    // Analyze conversation to identify topics
+    private func analyzeConversationTopics() {
+        // Only analyze if there are enough messages
+        guard messages.count >= 4 else { return }
+        
+        // Build conversation text from the last 6 messages
+        var conversationText = ""
+        for message in messages.suffix(min(6, messages.count)) {
+            let role = message.isUser ? "User" : "AI"
+            conversationText += "\(role): \(message.content)\n\n"
+        }
+        
+        Task {
+            do {
+                let prompt = """
+                Analyze this maternal health conversation and extract 3-5 main topics being discussed.
+                Return only the topics as a comma-separated list without numbering or explanation.
+                Example: "morning sickness, nutrition, first trimester symptoms"
+                
+                Conversation:
+                \(conversationText)
+                """
+                
+                let response = try await model.generateContent(prompt)
+                
+                if let topicsText = response.text?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                    let topics = topicsText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    DispatchQueue.main.async {
+                        conversationTopics = topics
+                        
+                        // Update suggested questions based on topics
+                        updateSuggestedQuestions(based: topics)
+                    }
+                }
+            } catch {
+                print("Error analyzing conversation topics: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    // Update suggested questions based on conversation topics
+    private func updateSuggestedQuestions(based topics: [String]) {
+        // This would dynamically update suggested questions based on conversation analysis
+        // For now, this is a placeholder for future implementation
     }
     
     private func handleError(_ message: String) {
@@ -381,31 +812,200 @@ struct MaatriView: View {
             isLoading = false
         }
     }
+    
+    // Feedback view for detailed feedback
+    private func feedbackView(for message: Message) -> some View {
+        VStack(spacing: 16) {
+            Text("Help us improve Maatri")
+                .font(.system(size: 20, weight: .bold))
+                .padding(.top, 20)
+            
+            Text("What was the issue with this response?")
+                .font(.system(size: 16))
+                .foregroundColor(.gray)
+            
+            VStack(spacing: 12) {
+                ForEach(MessageFeedback.allCases.filter { $0 != .none && $0 != .helpful }, id: \.self) { feedback in
+                    Button(action: {
+                        provideFeedback(for: message, feedback: feedback)
+                        showFeedbackSheet = false
+                    }) {
+                        HStack {
+                            Text(feedback.rawValue)
+                                .font(.system(size: 16))
+                                .foregroundColor(.black)
+                            
+                            Spacer()
+                            
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14))
+                                .foregroundColor(.gray)
+                        }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.gray.opacity(0.1))
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal)
+            
+            Spacer()
+            
+            Button("Cancel") {
+                showFeedbackSheet = false
+            }
+            .foregroundColor(.pink)
+            .padding(.bottom, 20)
+        }
+        .padding()
+    }
+    
+    // Save user feedback for AI training
+    private func provideFeedback(for message: Message, feedback: MessageFeedback) {
+        guard let index = messages.firstIndex(where: { $0.id == message.id }) else { return }
+        
+        // Update message in the UI
+        messages[index].feedback = feedback
+        
+        // Save feedback to Firestore
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        
+        let feedbackData: [String: Any] = [
+            "userId": userId,
+            "message": message.content,
+            "feedback": feedback.rawValue,
+            "timestamp": Timestamp(date: Date()),
+            "userContext": userContext.toPromptText()
+        ]
+        
+        let db = Firestore.firestore()
+        db.collection("feedback").addDocument(data: feedbackData) { error in
+            if let error = error {
+                print("Error saving feedback: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    // Save conversation for future training
+    private func saveConversation() {
+        guard let userId = Auth.auth().currentUser?.uid,
+              !messages.isEmpty else { return }
+        
+        // First, generate conversation summary using Gemini
+        Task {
+            do {
+                // Build conversation text
+                var conversationText = ""
+                for message in messages {
+                    let role = message.isUser ? "User" : "AI"
+                    conversationText += "\(role): \(message.content)\n\n"
+                }
+                
+                let prompt = """
+                Analyze this maternal health conversation and provide:
+                1. A 1-2 sentence summary of what was discussed
+                2. A list of 3-5 key topics/keywords that were covered
+                3. Rate the quality and helpfulness of the AI responses on a scale of 1-10
+                
+                Conversation:
+                \(conversationText)
+                """
+                
+                let response = try await model.generateContent(prompt)
+                
+                if let analysisText = response.text {
+                    // Save the conversation with analysis
+                    let conversationData: [String: Any] = [
+                        "userId": userId,
+                        "messages": messages.map { [
+                            "content": $0.content,
+                            "isUser": $0.isUser,
+                            "timestamp": Timestamp(date: $0.date),
+                            "feedback": $0.feedback.rawValue
+                        ] },
+                        "analysis": analysisText,
+                        "userContext": userContext.toPromptText(),
+                        "timestamp": Timestamp(date: Date())
+                    ]
+                    
+                    let db = Firestore.firestore()
+                    db.collection("conversations").addDocument(data: conversationData) { error in
+                        if let error = error {
+                            print("Error saving conversation: \(error.localizedDescription)")
+                        } else {
+                            // Success notification
+                            let successMessage = Message(
+                                content: "This conversation has been saved to help improve Maatri. Thank you for your contribution!",
+                                isUser: false
+                            )
+                            DispatchQueue.main.async {
+                                messages.append(successMessage)
+                            }
+                        }
+                    }
+                }
+            } catch {
+                print("Error analyzing conversation: \(error.localizedDescription)")
+            }
+        }
+    }
 }
 
+// Enhanced message bubble
 struct MessageBubble: View {
     let message: Message
     
     var body: some View {
-        HStack {
-            if message.isUser {
+        HStack(alignment: .bottom, spacing: 8) {
+            if !message.isUser {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 18))
+                    .foregroundColor(.pink)
+                    .padding(8)
+                    .background(Circle().fill(Color.white))
+                    .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            } else {
                 Spacer()
             }
             
-            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 5) {
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 2) {
                 Text(message.content)
+                    .font(.system(size: 16))
                     .padding(12)
-                    .background(message.isUser ? Color.pink : Color(.systemGray6))
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(message.isUser ? 
+                                  LinearGradient(gradient: Gradient(colors: [Color(#colorLiteral(red: 0.8392156863, green: 0.1882352941, blue: 0.4, alpha: 1)), Color(#colorLiteral(red: 0.968627451, green: 0.3647058824, blue: 0.5647058824, alpha: 1))]), startPoint: .topLeading, endPoint: .bottomTrailing) : 
+                                  LinearGradient(gradient: Gradient(colors: [Color.white, Color.white]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+                    )
                     .foregroundColor(message.isUser ? .white : .black)
-                    .cornerRadius(18)
-                    .padding(message.isUser ? .leading : .trailing, 30)
+                
+                // Timestamp
+                Text(formatTime(message.date))
+                    .font(.system(size: 11))
+                    .foregroundColor(.gray)
+                    .padding(.horizontal, 4)
             }
             
-            if !message.isUser {
+            if message.isUser {
+                Image(systemName: "person.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(Color(#colorLiteral(red: 0.8392156863, green: 0.1882352941, blue: 0.4, alpha: 1)))
+            } else {
                 Spacer()
             }
         }
         .id(message.id)
+        .padding(.horizontal, 4)
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }
 
