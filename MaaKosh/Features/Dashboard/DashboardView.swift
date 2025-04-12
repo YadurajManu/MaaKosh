@@ -15,8 +15,8 @@ struct DashboardView: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            // Home Tab
-            HomeView()
+            // Home Tab - Using the new Dashboard component
+            Dashboard()
                 .tabItem {
                     Image(systemName: "house.fill")
                     Text("Home")
@@ -34,42 +34,6 @@ struct DashboardView: View {
         .accentColor(Color.maakoshDeepPink)
         .alert(isPresented: $showAlert) {
             Alert(title: Text("Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
-        }
-    }
-}
-
-// Placeholder for Home Tab
-struct HomeView: View {
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Home")
-                        .font(AppFont.titleLarge())
-                        .foregroundColor(Color.maakoshDeepPink)
-                        .padding(.horizontal)
-                    
-                    Text("Welcome to MaaKosh")
-                        .font(AppFont.titleMedium())
-                        .foregroundColor(.primary)
-                        .padding(.horizontal)
-                    
-                    Text("Your dashboard content will appear here")
-                        .font(AppFont.body())
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal)
-                }
-                .padding(.top, 20)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Image("Logo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(height: 30)
-                }
-            }
         }
     }
 }
