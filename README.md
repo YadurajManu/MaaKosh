@@ -174,21 +174,4 @@ Don't forget to give the project a star! Thanks again!
 
 We look forward to your contributions!
 
----
-
-## 📄 License
-
-This project is licensed under the MIT License. See the `LICENSE.txt` file for more details (you'll need to create this file if you choose to include a license).
-
-Distributed under the MIT License. See `LICENSE` for more information.
-<!--
-You should create a `LICENSE.txt` or `LICENSE.md` file in the root of your project and paste the contents of your chosen license (e.g., MIT License text) into it.
-A common practice is to include a file named `LICENSE` or `LICENSE.txt` in the root of the repository.
-Example for MIT License: https://opensource.org/licenses/MIT
--->
-
----
-
----
-
 We hope MaaKosh brings you joy and support on your incredible journey into motherhood!
