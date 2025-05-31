@@ -104,6 +104,16 @@ Follow these instructions to get a copy of the project up and running on your lo
 *   **Xcode:** Download the latest version from the Mac App Store.
 *   **Apple Developer Account:** Required to install the app on a physical device.
 *   **Firebase Account:** To enable Firebase-dependent features (Authentication, Firestore), you'll need to set up your own Firebase project and add your `GoogleService-Info.plist` file.
+*   **API Keys for AI and Vitals Monitoring:**
+    *   The app uses Google Generative AI (Gemini) for its AI features and ThingSpeak for neonatal patch vitals. You will need to obtain API keys for these services.
+    1.  Navigate to the `MaaKosh/Core/` directory.
+    2.  You'll find a file named `APIKeys.swift.example`.
+    3.  **Duplicate this file and rename the copy to `APIKeys.swift`**.
+    4.  Open `APIKeys.swift` and replace the placeholder strings with your actual API keys:
+        *   `geminiAPIKey`: Your Google AI Studio API key.
+        *   `thingspeakAPIKey`: Your ThingSpeak Channel API Read Key.
+        *   `thingspeakChannelID`: Your ThingSpeak Channel ID.
+    5.  **Important:** The `APIKeys.swift` file is already listed in `.gitignore` to ensure your private keys are not committed to version control. Do not remove it from `.gitignore`.
 
 ### Building the Project
 
@@ -134,7 +144,7 @@ Follow these instructions to get a copy of the project up and running on your lo
 ### Important Notes
 
 *   **Functionality without Firebase:** Some features, particularly those related to AI and data persistence (like cycle tracking history, user profiles), will require a working Firebase setup. The app might run without it, but these features will likely be disabled or non-functional.
-*   **API Keys:** The app uses Google Generative AI and ThingSpeak. You might need to configure API keys for these services for full feature access. The current `PrePregnancyView.swift` and `NewbornCareView.swift` files seem to have API keys hardcoded. For a real-world scenario, these should be managed securely (e.g., via Xcode configurations or a `.xcconfig` file not committed to the repo).
+*   **API Keys Configuration:** Ensure you have configured your API keys in `MaaKosh/Core/APIKeys.swift` as described in the Prerequisites section for AI features and neonatal vitals monitoring to function correctly.
 
 ---
 

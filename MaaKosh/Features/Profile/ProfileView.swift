@@ -768,7 +768,6 @@ struct ProfileView: View {
             }
             
             // Clear local data
-            UserDefaults.standard.removeObject(forKey: "userFullName")
             UserDefaults.standard.removeObject(forKey: "userProfileImage")
             
             // Return to auth screen
@@ -1481,18 +1480,6 @@ struct EditTextField: View {
             .padding()
             .background(Color.maakoshLightPink.opacity(0.1))
             .cornerRadius(10)
-        }
-    }
-}
-
-// Extension to add fullName property to UserProfile
-extension UserProfile {
-    var fullName: String {
-        get {
-            UserDefaults.standard.string(forKey: "userFullName") ?? ""
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: "userFullName")
         }
     }
 }
