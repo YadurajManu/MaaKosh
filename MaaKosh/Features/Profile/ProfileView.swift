@@ -682,6 +682,28 @@ struct ProfileView: View {
     private func signOut() {
         do {
             try Auth.auth().signOut()
+
+            // Explicitly clear local user-specific state
+            self.userProfile = UserProfile() // Reset to default/empty UserProfile
+            self.medicalRecords = []         // Clear medical records array
+            self.emergencyContacts = []      // Clear emergency contacts array
+
+            // Reset any other @State variables that might hold user-specific data
+            // For example, if profileOpacity, profileOffset, sectionsOpacity were tied to user presence:
+            self.profileOpacity = 0.0
+            self.profileOffset = 30 // Or whatever initial "off-screen" state you use
+            self.sectionsOpacity = 0.0
+            // self.heartbeat = false // If this should also reset
+
+            // It's also good practice to reset states that control UI presentation within this view
+            self.isEditMode = false
+            self.showAddMedicalRecord = false
+            self.showAddEmergencyContact = false
+            self.selectedEmergencyContact = nil
+            // Reset alert states, though they might be less critical if the view disappears
+            self.showAlert = false
+            self.alertMessage = ""
+
             // Navigate back to auth view
             NotificationCenter.default.post(name: Notification.Name("UserDidSignOut"), object: nil)
         } catch {

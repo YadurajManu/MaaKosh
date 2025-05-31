@@ -567,6 +567,34 @@ struct AuthView: View {
             .onAppear {
                 loadSavedCredentials()
             }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("UserDidSignOut"))) { _ in
+                // Handle sign-out: reset state to show login form
+                self.isAuthenticated = false
+                self.isNewUser = false // Reset this flag too
+
+                // Clear form fields
+                self.email = ""
+                self.password = ""
+                self.fullName = ""
+
+                // Reset validation and UI states
+                self.isEmailValid = false
+                self.isEmailFocused = false
+                self.isPasswordFocused = false
+                self.showPasswordStrength = false
+                self.showEmailTooltip = false
+                self.showPasswordTooltip = false
+                self.showNameTooltip = false
+                self.termsAccepted = false
+                self.showPassword = false
+
+                // Clear "Remember Me" state and saved credentials
+                self.rememberMe = false
+                self.clearSavedCredentials() // Call the existing method to clear from UserDefaults/Keychain
+
+                // Reset authState to default if needed, e.g., to .signIn
+                self.authState = .signIn
+            }
         }
     }
     
