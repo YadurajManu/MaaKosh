@@ -42,6 +42,20 @@ struct AppFont {
     }
 }
 
+struct ActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { isPressed in
+                if isPressed {
+                    let haptic = UIImpactFeedbackGenerator(style: .light)
+                    haptic.impactOccurred()
+                }
+            }
+    }
+}
+
 enum AuthViewState {
     case signIn
     case signUp
@@ -95,6 +109,7 @@ struct AuthView: View {
     @State private var showEmailTooltip = false
     @State private var showPasswordTooltip = false
     @State private var showNameTooltip = false
+    @State private var hasAppeared = false // Added for entrance animations
     
     private var isFormValid: Bool {
         isEmailValid && !password.isEmpty && 
@@ -163,6 +178,9 @@ struct AuthView: View {
                         }
                         .padding(.top, 50)
                         .padding(.bottom, 30)
+                        .opacity(hasAppeared ? 1 : 0)
+                        .offset(y: hasAppeared ? 0 : 20)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: hasAppeared)
                         
                         // Authentication form
                         VStack(spacing: 25) {
@@ -182,6 +200,9 @@ struct AuthView: View {
                                         TooltipView(text: "Enter your full name (minimum 3 characters)")
                                     }
                                 }
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.25), value: hasAppeared)
                             }
                             
                             // Email field with validation
@@ -211,6 +232,9 @@ struct AuthView: View {
                                     TooltipView(text: "Enter a valid email address (e.g., name@example.com)")
                                 }
                             }
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.35 : 0.25), value: hasAppeared)
                             
                             // Password field with strength meter
                             VStack(alignment: .leading, spacing: 5) {
@@ -296,6 +320,9 @@ struct AuthView: View {
                                     TooltipView(text: "Create a strong password: at least 8 characters with uppercase, lowercase, and numbers or symbols")
                                 }
                             }
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.45 : 0.35), value: hasAppeared)
                             
                             if authState == .signIn {
                                 // Forgot password button (only for sign in)
@@ -310,6 +337,9 @@ struct AuthView: View {
                                     }
                                 }
                                 .padding(.top, -15)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.45), value: hasAppeared)
                             }
                             
                             // Terms and conditions checkbox (only for sign up)
@@ -383,6 +413,9 @@ struct AuthView: View {
                                     RoundedRectangle(cornerRadius: 10)
                                         .fill(Color.white.opacity(0.5))
                                 )
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.55), value: hasAppeared)
                             } else {
                                 // Terms links for sign in (more subtle) - REMOVING THIS SECTION
                                 // This section has been removed to show terms only on sign-up
@@ -419,6 +452,9 @@ struct AuthView: View {
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.40), value: hasAppeared)
                             }
                             
                             // Main action button (Sign In/Sign Up)
@@ -435,21 +471,42 @@ struct AuthView: View {
                                     Text(authState == .signIn ? "Sign In" : "Sign Up")
                                         .font(AppFont.buttonText())
                                         .foregroundColor(.white)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 15)
-                                        .background(isFormValid ? Color.maakoshDeepPink : Color.gray.opacity(0.5))
-                                        .cornerRadius(15)
-                                        .shadow(color: isFormValid ? Color.maakoshDeepPink.opacity(0.3) : Color.clear, radius: 5, x: 0, y: 3)
-                                    
+                                        .opacity(isLoading ? 0 : 1) // Fade out text when loading
+                                        .scaleEffect(isLoading ? 0.8 : 1) // Optionally scale down text
+
                                     if isLoading {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                             .scaleEffect(1.3)
+                                            .opacity(isLoading ? 1 : 0) // Fade in ProgressView
+                                            .scaleEffect(isLoading ? 1 : 0.8) // Optionally scale up ProgressView
                                     }
                                 }
+                                .animation(.easeInOut(duration: 0.2), value: isLoading) // Animate these changes
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 15)
+                                .background(
+                                    ZStack { // Use ZStack to layer disabled and enabled states if needed, or just for gradient
+                                        if isFormValid {
+                                            LinearGradient(
+                                                gradient: Gradient(colors: [Color.maakoshDeepPink.opacity(0.9), Color.maakoshMediumPink]), // Adjust colors for desired gradient
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        } else {
+                                            Color.gray.opacity(0.5)
+                                        }
+                                    }
+                                )
+                                .cornerRadius(15)
+                                .shadow(color: isFormValid ? Color.maakoshDeepPink.opacity(0.3) : Color.clear, radius: 5, x: 0, y: 3)
                             }
+                            .buttonStyle(ActionButtonStyle())
                             .disabled(!isFormValid || isLoading)
                             .padding(.top, 10)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.65 : 0.55), value: hasAppeared)
                             
                             // Toggle between sign in and sign up
                             HStack {
@@ -478,10 +535,24 @@ struct AuthView: View {
                             .padding(.top, 10)
                         }
                         .padding(.horizontal, 30)
+                        .opacity(hasAppeared ? 1 : 0)
+                        .offset(y: hasAppeared ? 0 : 20)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.75 : 0.65), value: hasAppeared)
                         
                         Spacer(minLength: 40)
                     }
                     .padding(.bottom, 20)
+                }
+                .onAppear {
+                    // Initial state for elements to be animated
+                    self.hasAppeared = false
+                    // Trigger animation after a very short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        // Use a single withAnimation block for the state change that triggers all animations
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                            self.hasAppeared = true
+                        }
+                    }
                 }
             }
             .alert(isPresented: $showAlert) {
@@ -877,12 +948,16 @@ struct TooltipView: View {
     var body: some View {
         Text(text)
             .font(AppFont.small())
-            .foregroundColor(.white)
-            .padding(10)
-            .background(Color.black.opacity(0.7))
-            .cornerRadius(8)
-            .transition(.opacity)
-            .animation(.easeInOut, value: text)
+            .foregroundColor(Color.maakoshDeepPink) // Use app's deep pink for text
+            .padding(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)) // Adjusted padding
+            .background(
+                Capsule() // Use Capsule shape for a softer, more playful look
+                    .fill(Color.maakoshLightPink.opacity(0.95)) // Use a light app color, slightly opaque
+                    .shadow(color: Color.maakoshMediumPink.opacity(0.4), radius: 3, x: 0, y: 2) // Softer shadow
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.85))) // Animate appearance/disappearance
+            // The .animation on 'text' change was removed before, which is correct.
+            // The transition will be animated by the parent view that controls the tooltip's visibility.
     }
 }
 
