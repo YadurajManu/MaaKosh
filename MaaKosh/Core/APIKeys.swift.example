@@ -1,0 +1,27 @@
+// MaaKosh/Core/APIKeys.swift.example
+
+/*
+IMPORTANT:
+1. RENAME THIS FILE to `APIKeys.swift` (remove .example).
+2. ENSURE `APIKeys.swift` is listed in your `.gitignore` file to prevent committing your actual keys.
+3. REPLACE the placeholder values below with your actual API keys and channel ID.
+
+This file provides a centralized place to store your API keys.
+The actual `APIKeys.swift` file (once you rename this one and add your keys) should NOT be committed to version control.
+*/
+
+struct APIKeys {
+    // Google Generative AI (Gemini) API Key
+    // Obtain from: https://aistudio.google.com/app/apikey
+    static let geminiAPIKey = "PASTE_YOUR_GOOGLE_GEMINI_API_KEY_HERE"
+
+    // ThingSpeak API Key and Channel ID (for Neonatal Patch Vitals)
+    // Obtain from your ThingSpeak channel settings
+    static let thingspeakAPIKey = "PASTE_YOUR_THINGSPEAK_API_KEY_HERE"
+    static let thingspeakChannelID = "PASTE_YOUR_THINGSPEAK_CHANNEL_ID_HERE"
+}
+
+// Note: After creating APIKeys.swift and adding your keys,
+// the application will use these values.
+// Make sure the project compiles and accesses these keys correctly.
+// Example usage in a file: private let apiKey = APIKeys.geminiAPIKey

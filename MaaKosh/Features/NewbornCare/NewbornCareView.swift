@@ -1859,7 +1859,7 @@ struct GeminiAICareView: View {
     let feedingRecords: [FeedingRecord]
     let vaccinationRecords: [VaccinationRecord]
     
-    private let geminiAPIKey = "AIzaSyCueBkZoml0YMVXHxtMZeE7Xn-0iqDRpGU"
+    private let geminiAPIKey = APIKeys.geminiAPIKey
     
     @State private var messages: [ChatMessage] = []
     @State private var userInput: String = ""
@@ -2367,8 +2367,8 @@ struct VitalMonitoringView: View {
     
     let babyName: String
     
-    private let thingspeakChannel = "2916872"
-    private let thingspeakAPIKey = "BQFLBK7JHE2VHZH4"
+    private let thingspeakChannel = APIKeys.thingspeakChannelID
+    private let thingspeakAPIKey = APIKeys.thingspeakAPIKey
     
     @State private var bilirubinData: [VitalDataPoint] = []
     @State private var temperatureData: [VitalDataPoint] = []

@@ -39,7 +39,7 @@ struct PrePregnancyView: View {
     private let monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     
     // AI model for generating recommendations
-    private let apiKey = "AIzaSyCueBkZoml0YMVXHxtMZeE7Xn-0iqDRpGU"
+    private let apiKey = APIKeys.geminiAPIKey
     private var model: GenerativeModel {
         let config = GenerationConfig(maxOutputTokens: 500)
         return GenerativeModel(name: "gemini-1.5-pro", apiKey: apiKey, generationConfig: config)
@@ -2415,7 +2415,7 @@ struct GeminiAIFertilityGuideView: View {
     let periodLength: Int
     let cycleEvents: [CycleEvent]
     
-    private let geminiAPIKey = "AIzaSyCueBkZoml0YMVXHxtMZeE7Xn-0iqDRpGU"
+    private let geminiAPIKey = APIKeys.geminiAPIKey
     
     @State private var messages: [ChatMessage] = []
     @State private var userInput: String = ""

@@ -85,10 +85,11 @@ struct MaatriView: View {
     @State private var showFeedbackSheet = false
     @State private var currentFeedbackMessage: Message? = nil
     @State private var conversationTopics: [String] = []
+    @State private var contextualSuggestions: [String] = []
     @State private var conversationSummary: String = ""
     
     // Initialize Gemini model with API key
-    private let apiKey = "AIzaSyCueBkZoml0YMVXHxtMZeE7Xn-0iqDRpGU"
+    private let apiKey = APIKeys.geminiAPIKey
     private var model: GenerativeModel {
         let config = GenerationConfig(maxOutputTokens: 800)
         return GenerativeModel(name: "gemini-1.5-pro", apiKey: apiKey, generationConfig: config)
@@ -96,31 +97,64 @@ struct MaatriView: View {
     
     // Suggested questions based on pregnancy stage
     private var suggestedQuestions: [String] {
-        if userContext.currentPregnancyWeek < 1 {
-            return [
-                "How can I improve my chances of conception?",
-                "What lifestyle changes help with fertility?",
-                "When should I take a pregnancy test?"
-            ]
-        } else if userContext.currentPregnancyWeek < 14 {
-            return [
-                "What symptoms are normal in the first trimester?",
-                "How can I manage morning sickness?",
-                "What foods should I avoid during pregnancy?"
-            ]
-        } else if userContext.currentPregnancyWeek < 27 {
-            return [
-                "When will I feel the baby move?",
-                "What exercises are safe in the second trimester?",
-                "What should I include in my birth plan?"
-            ]
-        } else {
-            return [
-                "How can I recognize signs of labor?",
-                "What should I pack in my hospital bag?",
-                "How can I prepare for breastfeeding?"
-            ]
+        var questions: [String] = []
+
+        // Stage-based questions (add 1-2 generic ones)
+        if userContext.currentPregnancyWeek < 1 { // Trying to conceive
+            questions.append("Tips for getting pregnant?")
+            questions.append("Understanding my fertile window.")
+        } else if userContext.currentPregnancyWeek < 14 { // First trimester
+            questions.append("Managing first trimester symptoms?")
+            questions.append("Safe foods during early pregnancy?")
+        } else if userContext.currentPregnancyWeek < 27 { // Second trimester
+            questions.append("Recommended exercises for second trimester?")
+            questions.append("When will I feel my baby move?")
+        } else if userContext.currentPregnancyWeek <= 42 { // Third trimester (up to 42 weeks)
+            questions.append("Preparing for labor and delivery?")
+            questions.append("What to pack in a hospital bag?")
+        } else { // Postpartum or beyond typical pregnancy duration (or if week is 0 but not TTC)
+            questions.append("Tips for postpartum recovery?")
+            questions.append("Newborn care basics.")
         }
+
+        // Context-specific questions based on UserHealthContext
+        var specificQuestions: [String] = []
+        if userContext.hasRisks {
+            if let firstRisk = userContext.riskFactors.first {
+                specificQuestions.append("How to manage risks like \(firstRisk)?")
+            } else {
+                specificQuestions.append("I have some health risks, what should I be aware of?")
+            }
+        }
+
+        if userContext.currentPregnancyWeek > 0 && userContext.age > 35 {
+            specificQuestions.append("Advice for pregnancy over 35?")
+        }
+
+        if !userContext.recentHealthMetrics.isEmpty {
+            // Example: if a specific concerning metric was flagged in userContext, add a question.
+            // This part requires userContext to have a way to signal "concerning" metrics.
+            // For now, let's add a generic one if metrics exist.
+            specificQuestions.append("Understanding my recent health metrics.")
+        }
+
+        // Combine and prioritize: Add specific questions first, then fill with generic ones.
+        var finalSuggestions: [String] = []
+        finalSuggestions.append(contentsOf: specificQuestions)
+
+        for q in questions {
+            if finalSuggestions.count < 3 && !finalSuggestions.contains(q) { // Limit to 3 suggestions
+                finalSuggestions.append(q)
+            }
+        }
+
+        // If still no suggestions (e.g. week is 0 but not TTC, no specific conditions), add very generic ones.
+        if finalSuggestions.isEmpty {
+            finalSuggestions.append("General health tips?")
+            finalSuggestions.append("Ask me anything about your journey.")
+        }
+
+        return Array(Set(finalSuggestions)).prefix(3).map { $0 } // Ensure uniqueness and limit
     }
     
     var body: some View {
@@ -466,7 +500,8 @@ struct MaatriView: View {
             if showSuggestions && messages.count > 0 && !isLoading {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(suggestedQuestions, id: \.self) { question in
+                        let questionsToDisplay = contextualSuggestions.isEmpty ? suggestedQuestions : contextualSuggestions
+                        ForEach(questionsToDisplay, id: \.self) { question in
                             Button(action: {
                                 inputText = question
                                 sendMessage()
@@ -699,6 +734,48 @@ struct MaatriView: View {
                 // Include user context and conversation history
                 let contextInfo = userContext.toPromptText()
                 
+                // Determine use case for specific instructions
+                var useCaseSpecificInstructions = ""
+                let lowercasedUserInput = userInput.lowercased()
+
+                // 1. Symptom-related query
+                let symptomKeywords = ["symptom", "feel", "nausea", "headache", "tired", "cramp", "swelling", "pain"]
+                if symptomKeywords.contains(where: lowercasedUserInput.contains) {
+                    useCaseSpecificInstructions = """
+                    The user is asking about a physical symptom.
+                    When responding:
+                    1. Acknowledge the symptom.
+                    2. Briefly state if it's common for their current stage (if context allows, otherwise general).
+                    3. Offer 1-2 general self-care tips or explanations if appropriate.
+                    4. Clearly state when they should consult a healthcare provider regarding this symptom (e.g., if severe, persistent, or accompanied by other specific signs).
+                    Your primary goal is to be informative and safe, not to diagnose.
+                    """
+                }
+                // 2. Nutrition/Food query
+                let nutritionKeywords = ["eat", "drink", "food", "diet", "nutrition", "avoid", "caffeine", "cheese", "fish", "supplement"]
+                if nutritionKeywords.contains(where: lowercasedUserInput.contains) {
+                    useCaseSpecificInstructions = """
+                    The user has a nutrition-related question.
+                    When responding:
+                    1. Provide clear, evidence-based information regarding the food or nutrient in question.
+                    2. Specify if it's generally safe, to be consumed in moderation, or to be avoided during pregnancy/breastfeeding (if context allows).
+                    3. If suggesting alternatives or good sources, list 1-2 examples.
+                    4. If the query is complex or relates to specific dietary needs/deficiencies, suggest consulting a doctor or registered dietitian.
+                    """
+                }
+                // 3. Emotional well-being query
+                let emotionKeywords = ["sad", "anxious", "stressed", "worried", "depressed", "mood", "feeling down"]
+                if emotionKeywords.contains(where: lowercasedUserInput.contains) {
+                    useCaseSpecificInstructions = """
+                    The user is expressing emotional distress or asking about mental well-being.
+                    When responding:
+                    1. Acknowledge their feelings with empathy and validation.
+                    2. Normalize their experience if appropriate (e.g., "It's common to feel anxious during pregnancy.").
+                    3. Suggest 1-2 simple, actionable self-care or coping strategies (e.g., talking to someone, mindfulness, gentle exercise if appropriate).
+                    4. Gently encourage them to speak with their healthcare provider or a mental health professional if feelings are overwhelming, persistent, or significantly impacting their daily life. Avoid trying to act as a therapist.
+                    """
+                }
+
                 // Include the last 5 messages for context
                 var conversationHistory = ""
                 let recentMessages = messages.suffix(min(5, messages.count - 1)) // Exclude the message just added
@@ -726,6 +803,8 @@ struct MaatriView: View {
                 Recent conversation history:
                 \(conversationHistory)
                 
+                \(useCaseSpecificInstructions)
+
                 Answer the following message from this user who is using the MaaKosh app for maternal health tracking:
 
                 User message: \(userInput)
@@ -855,8 +934,37 @@ struct MaatriView: View {
     
     // Update suggested questions based on conversation topics
     private func updateSuggestedQuestions(based topics: [String]) {
-        // This would dynamically update suggested questions based on conversation analysis
-        // For now, this is a placeholder for future implementation
+        var newSuggestions: [String] = []
+        guard !topics.isEmpty else {
+            // If no topics, clear contextual suggestions or revert to default
+            DispatchQueue.main.async {
+                self.contextualSuggestions = [] // Or set to default stage-based suggestions if preferred
+            }
+            return
+        }
+
+        for topic in topics.prefix(2) { // Take top 2 topics to generate 1-2 suggestions
+            let sanitizedTopic = topic.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !sanitizedTopic.isEmpty {
+                newSuggestions.append("Tell me more about \(sanitizedTopic).")
+                // Example of a second type of follow-up, can be more varied
+                if sanitizedTopic.contains("symptom") || sanitizedTopic.contains("feel") {
+                    newSuggestions.append("What can I do about \(sanitizedTopic)?")
+                } else if sanitizedTopic.contains("food") || sanitizedTopic.contains("nutrition") {
+                    newSuggestions.append("Are there foods to avoid related to \(sanitizedTopic)?")
+                }
+            }
+        }
+
+        // Limit the number of contextual suggestions
+        let finalSuggestions = Array(Set(newSuggestions)).prefix(2) // Remove duplicates and take max 2
+
+        DispatchQueue.main.async {
+            self.contextualSuggestions = Array(finalSuggestions)
+            if !self.contextualSuggestions.isEmpty {
+                self.showSuggestions = true // Ensure suggestions are visible if we have new ones
+            }
+        }
     }
     
     private func handleError(_ message: String) {

@@ -49,9 +49,10 @@ struct OnboardingPageView: View {
             }
             .frame(height: 250)
             .padding(.bottom, 40)
-            .onAppear {
-                isAnimating = true
-            }
+            // .onAppear for ZStack removed, handled by root VStack
+            .opacity(isAnimating ? 1 : 0)
+            .offset(y: isAnimating ? 0 : 30)
+            .animation(.spring(response: 0.5, dampingFraction: 0.7, blendDuration: 0).delay(0.2), value: isAnimating)
             
             // Title
             Text(page.title)
@@ -59,6 +60,9 @@ struct OnboardingPageView: View {
                 .foregroundColor(Color.maakoshDeepPink)
                 .padding(.bottom, 10)
                 .multilineTextAlignment(.center)
+                .opacity(isAnimating ? 1 : 0)
+                .offset(y: isAnimating ? 0 : 30)
+                .animation(.spring(response: 0.5, dampingFraction: 0.7, blendDuration: 0).delay(0.35), value: isAnimating)
             
             // Description
             Text(page.description)
@@ -68,8 +72,20 @@ struct OnboardingPageView: View {
                 .padding(.horizontal, 30)
                 .padding(.bottom, 40)
                 .fixedSize(horizontal: false, vertical: true)
+                .opacity(isAnimating ? 1 : 0)
+                .offset(y: isAnimating ? 0 : 30)
+                .animation(.spring(response: 0.5, dampingFraction: 0.7, blendDuration: 0).delay(0.5), value: isAnimating)
             
             Spacer()
+        }
+        .onAppear {
+            // Set initial states for animation
+            isAnimating = false
+
+            // Trigger animation after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isAnimating = true // This will trigger all animations tied to isAnimating
+            }
         }
     }
 }
