@@ -88,7 +88,7 @@ struct MaatriView: View {
     @State private var conversationSummary: String = ""
     
     // Initialize Gemini model with API key
-    private let apiKey = "AIzaSyCueBkZoml0YMVXHxtMZeE7Xn-0iqDRpGU"
+    private let apiKey = APIKeys.geminiAPIKey
     private var model: GenerativeModel {
         let config = GenerationConfig(maxOutputTokens: 800)
         return GenerativeModel(name: "gemini-1.5-pro", apiKey: apiKey, generationConfig: config)

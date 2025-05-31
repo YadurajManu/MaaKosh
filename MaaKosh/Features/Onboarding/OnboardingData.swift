@@ -10,6 +10,7 @@ import FirebaseFirestore
 
 // User profile model to store information after signup
 struct UserProfile: Codable {
+    var fullName: String = "" // Added
     var age: Int = 0
     var phoneNumber: String = ""
     var partnerName: String = ""
@@ -33,6 +34,7 @@ struct UserProfile: Codable {
         let db = Firestore.firestore()
         
         let userData: [String: Any] = [
+            "fullName": fullName, // Added
             "age": age,
             "phoneNumber": phoneNumber,
             "partnerName": partnerName,
