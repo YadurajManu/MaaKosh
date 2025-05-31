@@ -42,6 +42,20 @@ struct AppFont {
     }
 }
 
+struct ActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { isPressed in
+                if isPressed {
+                    let haptic = UIImpactFeedbackGenerator(style: .light)
+                    haptic.impactOccurred()
+                }
+            }
+    }
+}
+
 enum AuthViewState {
     case signIn
     case signUp
@@ -95,6 +109,8 @@ struct AuthView: View {
     @State private var showEmailTooltip = false
     @State private var showPasswordTooltip = false
     @State private var showNameTooltip = false
+    @State private var hasAppeared = false // Added for entrance animations
+    @State private var showForgotPasswordSheet = false // Added for forgot password sheet
     
     private var isFormValid: Bool {
         isEmailValid && !password.isEmpty && 
@@ -163,6 +179,9 @@ struct AuthView: View {
                         }
                         .padding(.top, 50)
                         .padding(.bottom, 30)
+                        .opacity(hasAppeared ? 1 : 0)
+                        .offset(y: hasAppeared ? 0 : 20)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: hasAppeared)
                         
                         // Authentication form
                         VStack(spacing: 25) {
@@ -182,6 +201,9 @@ struct AuthView: View {
                                         TooltipView(text: "Enter your full name (minimum 3 characters)")
                                     }
                                 }
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.25), value: hasAppeared)
                             }
                             
                             // Email field with validation
@@ -211,6 +233,9 @@ struct AuthView: View {
                                     TooltipView(text: "Enter a valid email address (e.g., name@example.com)")
                                 }
                             }
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.35 : 0.25), value: hasAppeared)
                             
                             // Password field with strength meter
                             VStack(alignment: .leading, spacing: 5) {
@@ -296,13 +321,16 @@ struct AuthView: View {
                                     TooltipView(text: "Create a strong password: at least 8 characters with uppercase, lowercase, and numbers or symbols")
                                 }
                             }
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.45 : 0.35), value: hasAppeared)
                             
                             if authState == .signIn {
                                 // Forgot password button (only for sign in)
                                 HStack {
                                     Spacer()
                                     Button(action: {
-                                        forgotPassword()
+                                        showForgotPasswordSheet = true
                                     }) {
                                         Text("Forgot Password?")
                                             .font(AppFont.caption())
@@ -310,6 +338,9 @@ struct AuthView: View {
                                     }
                                 }
                                 .padding(.top, -15)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.45), value: hasAppeared)
                             }
                             
                             // Terms and conditions checkbox (only for sign up)
@@ -383,6 +414,9 @@ struct AuthView: View {
                                     RoundedRectangle(cornerRadius: 10)
                                         .fill(Color.white.opacity(0.5))
                                 )
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.55), value: hasAppeared)
                             } else {
                                 // Terms links for sign in (more subtle) - REMOVING THIS SECTION
                                 // This section has been removed to show terms only on sign-up
@@ -419,6 +453,9 @@ struct AuthView: View {
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.40), value: hasAppeared)
                             }
                             
                             // Main action button (Sign In/Sign Up)
@@ -435,21 +472,42 @@ struct AuthView: View {
                                     Text(authState == .signIn ? "Sign In" : "Sign Up")
                                         .font(AppFont.buttonText())
                                         .foregroundColor(.white)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 15)
-                                        .background(isFormValid ? Color.maakoshDeepPink : Color.gray.opacity(0.5))
-                                        .cornerRadius(15)
-                                        .shadow(color: isFormValid ? Color.maakoshDeepPink.opacity(0.3) : Color.clear, radius: 5, x: 0, y: 3)
-                                    
+                                        .opacity(isLoading ? 0 : 1) // Fade out text when loading
+                                        .scaleEffect(isLoading ? 0.8 : 1) // Optionally scale down text
+
                                     if isLoading {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                             .scaleEffect(1.3)
+                                            .opacity(isLoading ? 1 : 0) // Fade in ProgressView
+                                            .scaleEffect(isLoading ? 1 : 0.8) // Optionally scale up ProgressView
                                     }
                                 }
+                                .animation(.easeInOut(duration: 0.2), value: isLoading) // Animate these changes
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 15)
+                                .background(
+                                    ZStack { // Use ZStack to layer disabled and enabled states if needed, or just for gradient
+                                        if isFormValid {
+                                            LinearGradient(
+                                                gradient: Gradient(colors: [Color.maakoshDeepPink.opacity(0.9), Color.maakoshMediumPink]), // Adjust colors for desired gradient
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        } else {
+                                            Color.gray.opacity(0.5)
+                                        }
+                                    }
+                                )
+                                .cornerRadius(15)
+                                .shadow(color: isFormValid ? Color.maakoshDeepPink.opacity(0.3) : Color.clear, radius: 5, x: 0, y: 3)
                             }
+                            .buttonStyle(ActionButtonStyle())
                             .disabled(!isFormValid || isLoading)
                             .padding(.top, 10)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.65 : 0.55), value: hasAppeared)
                             
                             // Toggle between sign in and sign up
                             HStack {
@@ -478,10 +536,24 @@ struct AuthView: View {
                             .padding(.top, 10)
                         }
                         .padding(.horizontal, 30)
+                        .opacity(hasAppeared ? 1 : 0)
+                        .offset(y: hasAppeared ? 0 : 20)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.75 : 0.65), value: hasAppeared)
                         
                         Spacer(minLength: 40)
                     }
                     .padding(.bottom, 20)
+                }
+                .onAppear {
+                    // Initial state for elements to be animated
+                    self.hasAppeared = false
+                    // Trigger animation after a very short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        // Use a single withAnimation block for the state change that triggers all animations
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                            self.hasAppeared = true
+                        }
+                    }
                 }
             }
             .alert(isPresented: $showAlert) {
@@ -493,8 +565,39 @@ struct AuthView: View {
             .sheet(isPresented: $showPrivacySheet) {
                 PrivacyView()
             }
+            .sheet(isPresented: $showForgotPasswordSheet) {
+                ForgotPasswordView()
+            }
             .onAppear {
                 loadSavedCredentials()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("UserDidSignOut"))) { _ in
+                // Handle sign-out: reset state to show login form
+                self.isAuthenticated = false
+                self.isNewUser = false // Reset this flag too
+
+                // Clear form fields
+                self.email = ""
+                self.password = ""
+                self.fullName = ""
+
+                // Reset validation and UI states
+                self.isEmailValid = false
+                self.isEmailFocused = false
+                self.isPasswordFocused = false
+                self.showPasswordStrength = false
+                self.showEmailTooltip = false
+                self.showPasswordTooltip = false
+                self.showNameTooltip = false
+                self.termsAccepted = false
+                self.showPassword = false
+
+                // Clear "Remember Me" state and saved credentials
+                self.rememberMe = false
+                self.clearSavedCredentials() // Call the existing method to clear from UserDefaults/Keychain
+
+                // Reset authState to default if needed, e.g., to .signIn
+                self.authState = .signIn
             }
         }
     }
@@ -877,12 +980,16 @@ struct TooltipView: View {
     var body: some View {
         Text(text)
             .font(AppFont.small())
-            .foregroundColor(.white)
-            .padding(10)
-            .background(Color.black.opacity(0.7))
-            .cornerRadius(8)
-            .transition(.opacity)
-            .animation(.easeInOut, value: text)
+            .foregroundColor(Color.maakoshDeepPink) // Use app's deep pink for text
+            .padding(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)) // Adjusted padding
+            .background(
+                Capsule() // Use Capsule shape for a softer, more playful look
+                    .fill(Color.maakoshLightPink.opacity(0.95)) // Use a light app color, slightly opaque
+                    .shadow(color: Color.maakoshMediumPink.opacity(0.4), radius: 3, x: 0, y: 2) // Softer shadow
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.85))) // Animate appearance/disappearance
+            // The .animation on 'text' change was removed before, which is correct.
+            // The transition will be animated by the parent view that controls the tooltip's visibility.
     }
 }
 
@@ -965,6 +1072,298 @@ struct AuthSecureField: View {
         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 3)
         .onTapGesture {
             isFocused = true
+        }
+    }
+}
+
+// MARK: - Forgot Password View
+struct ForgotPasswordView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var email = ""
+    @State private var isLoading = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
+    @State private var isEmailValid = false
+    @State private var isEmailFocused = false
+    @State private var hasAppeared = false
+    @State private var isSuccess = false
+    
+    private var isFormValid: Bool {
+        isEmailValid && !email.isEmpty
+    }
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                // Background gradient matching the main auth view
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.maakoshLightPink, Color.maakoshMediumLightPink.opacity(0.3)]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 30) {
+                        Spacer(minLength: 40)
+                        
+                        // Header section
+                        VStack(spacing: 20) {
+                            // Icon
+                            ZStack {
+                                Circle()
+                                    .fill(Color.white.opacity(0.9))
+                                    .frame(width: 100, height: 100)
+                                    .shadow(color: Color.maakoshDeepPink.opacity(0.2), radius: 10, x: 0, y: 5)
+                                
+                                Image(systemName: isSuccess ? "checkmark.circle.fill" : "key.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(isSuccess ? .green : Color.maakoshDeepPink)
+                                    .scaleEffect(hasAppeared ? 1 : 0.5)
+                                    .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2), value: hasAppeared)
+                            }
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : -20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: hasAppeared)
+                            
+                            // Title and description
+                            VStack(spacing: 12) {
+                                Text(isSuccess ? "Check Your Email" : "Reset Password")
+                                    .font(AppFont.titleMedium())
+                                    .foregroundColor(Color.maakoshDeepPink)
+                                    .multilineTextAlignment(.center)
+                                
+                                Text(isSuccess ? 
+                                     "We've sent a password reset link to your email address. Please check your inbox and follow the instructions." :
+                                     "Enter your email address and we'll send you a link to reset your password.")
+                                    .font(AppFont.body())
+                                    .foregroundColor(.black.opacity(0.7))
+                                    .multilineTextAlignment(.center)
+                                    .lineSpacing(4)
+                            }
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.3), value: hasAppeared)
+                        }
+                        .padding(.horizontal, 30)
+                        
+                        if !isSuccess {
+                            // Email input section
+                            VStack(spacing: 20) {
+                                // Email field
+                                VStack(alignment: .leading, spacing: 8) {
+                                    AuthTextField(
+                                        iconName: "envelope.fill",
+                                        placeholder: "Email Address",
+                                        text: $email,
+                                        isValid: $isEmailValid,
+                                        isFocused: $isEmailFocused
+                                    )
+                                    .onChange(of: email) { newValue in
+                                        validateEmail(newValue)
+                                    }
+                                    
+                                    // Email validation indicator
+                                    if !email.isEmpty {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: isEmailValid ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(isEmailValid ? .green : .red)
+                                            
+                                            Text(isEmailValid ? "Valid email address" : "Please enter a valid email")
+                                                .font(AppFont.caption())
+                                                .foregroundColor(isEmailValid ? .green : .red)
+                                        }
+                                        .padding(.leading, 45)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                    }
+                                }
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.4), value: hasAppeared)
+                                
+                                // Send reset button
+                                Button(action: {
+                                    sendPasswordReset()
+                                }) {
+                                    ZStack {
+                                        Text("Send Reset Link")
+                                            .font(AppFont.buttonText())
+                                            .foregroundColor(.white)
+                                            .opacity(isLoading ? 0 : 1)
+                                            .scaleEffect(isLoading ? 0.8 : 1)
+                                        
+                                        if isLoading {
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                                .scaleEffect(1.2)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: isFormValid ? 
+                                                [Color.maakoshDeepPink.opacity(0.9), Color.maakoshMediumPink] :
+                                                [Color.gray.opacity(0.5), Color.gray.opacity(0.3)]
+                                            ),
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .cornerRadius(15)
+                                    .shadow(color: isFormValid ? Color.maakoshDeepPink.opacity(0.3) : Color.clear, radius: 5, x: 0, y: 3)
+                                    .animation(.easeInOut(duration: 0.2), value: isLoading)
+                                }
+                                .buttonStyle(ActionButtonStyle())
+                                .disabled(!isFormValid || isLoading)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.5), value: hasAppeared)
+                            }
+                            .padding(.horizontal, 30)
+                        } else {
+                            // Success state buttons
+                            VStack(spacing: 15) {
+                                // Open email app button
+                                Button(action: {
+                                    openEmailApp()
+                                }) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "envelope.open.fill")
+                                            .font(.system(size: 18))
+                                        Text("Open Email App")
+                                            .font(AppFont.buttonText())
+                                    }
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [Color.maakoshDeepPink.opacity(0.9), Color.maakoshMediumPink]),
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .cornerRadius(15)
+                                    .shadow(color: Color.maakoshDeepPink.opacity(0.3), radius: 5, x: 0, y: 3)
+                                }
+                                .buttonStyle(ActionButtonStyle())
+                                
+                                // Resend button
+                                Button(action: {
+                                    withAnimation {
+                                        isSuccess = false
+                                    }
+                                }) {
+                                    Text("Resend Email")
+                                        .font(AppFont.body())
+                                        .foregroundColor(Color.maakoshDeepPink)
+                                        .padding(.vertical, 12)
+                                }
+                            }
+                            .padding(.horizontal, 30)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.4), value: hasAppeared)
+                        }
+                        
+                        Spacer(minLength: 40)
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                            Text("Back")
+                                .font(AppFont.body())
+                        }
+                        .foregroundColor(Color.maakoshDeepPink)
+                    }
+                }
+            }
+        }
+        .alert(isPresented: $showAlert) {
+            Alert(
+                title: Text(isSuccess ? "Success" : "Error"),
+                message: Text(alertMessage),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .onAppear {
+            // Trigger entrance animations
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                    hasAppeared = true
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func validateEmail(_ email: String) {
+        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+        let emailPredicate = NSPredicate(format:"SELF MATCHES %@", emailRegex)
+        
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isEmailValid = emailPredicate.evaluate(with: email) && email.count > 5
+        }
+    }
+    
+    private func sendPasswordReset() {
+        guard isFormValid else { return }
+        
+        isLoading = true
+        
+        Auth.auth().sendPasswordReset(withEmail: email) { error in
+            DispatchQueue.main.async {
+                isLoading = false
+                
+                if let error = error {
+                    alertMessage = handleAuthError(error)
+                    showAlert = true
+                } else {
+                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                        isSuccess = true
+                    }
+                    
+                    // Add haptic feedback for success
+                    let haptic = UINotificationFeedbackGenerator()
+                    haptic.notificationOccurred(.success)
+                }
+            }
+        }
+    }
+    
+    private func openEmailApp() {
+        if let url = URL(string: "mailto:") {
+            if UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+    
+    private func handleAuthError(_ error: Error) -> String {
+        let errorCode = (error as NSError).code
+        
+        switch errorCode {
+        case AuthErrorCode.invalidEmail.rawValue:
+            return "The email address is not valid."
+        case AuthErrorCode.userNotFound.rawValue:
+            return "No account found with this email address."
+        case AuthErrorCode.networkError.rawValue:
+            return "Network error. Please check your internet connection."
+        case AuthErrorCode.tooManyRequests.rawValue:
+            return "Too many requests. Please try again later."
+        default:
+            return "An error occurred: \(error.localizedDescription)"
         }
     }
 }
