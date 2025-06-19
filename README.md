@@ -176,3 +176,7 @@ Don't forget to give the project a star! Thanks again!
 We look forward to your contributions!
 
 We hope MaaKosh brings you joy and support on your incredible journey into motherhood!
+## GitAds Sponsored
+[![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=yadurajmanu/maakosh@github)](https://gitads.dev/v1/ad-track?source=yadurajmanu/maakosh@github)
+
+
