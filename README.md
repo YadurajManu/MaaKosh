@@ -1,3 +1,4 @@
+<!-- GitAds-Verify: 686BRA2YKZVA2IGCM5AFJ6DKQSNAWM8M -->
 # MaaKosh: Your AI-Powered Motherhood Journey Companion 🤰👶✨
 
 <!-- Placeholder for Logo -->
