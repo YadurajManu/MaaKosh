@@ -11,12 +11,14 @@ import FirebaseFirestore
 // User profile model to store information after signup
 struct UserProfile: Codable {
     var fullName: String = "" // Added
+    var email: String = ""
     var age: Int = 0
     var phoneNumber: String = ""
     var partnerName: String = ""
     var lastPeriodDate: Date = Date()
     var cycleLengthInDays: Int = 28
     var isProfileComplete: Bool = false
+    var authProvider: String = "email" // "email", "apple", etc.
     
     // Calculate estimated due date (EDD) - approximately 280 days from last period
     var estimatedDueDate: Date {
@@ -35,16 +37,20 @@ struct UserProfile: Codable {
         
         let userData: [String: Any] = [
             "fullName": fullName, // Added
+            "email": email,
             "age": age,
             "phoneNumber": phoneNumber,
             "partnerName": partnerName,
             "lastPeriodDate": lastPeriodDate,
             "cycleLengthInDays": cycleLengthInDays,
             "isProfileComplete": true,
+            "authProvider": authProvider,
+            "createdAt": FieldValue.serverTimestamp(),
             "updatedAt": FieldValue.serverTimestamp()
         ]
         
-        db.collection("users").document(userId).updateData(userData, completion: completion)
+        // Use setData instead of updateData to create or update the document
+        db.collection("users").document(userId).setData(userData, merge: true, completion: completion)
     }
 }
 

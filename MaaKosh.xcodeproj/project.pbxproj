@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9039916F2E0BC8F00074339D /* DotLottie in Frameworks */ = {isa = PBXBuildFile; productRef = 9039916E2E0BC8F00074339D /* DotLottie */; };
 		9088FD892DA9A38800A667A1 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 9088FD882DA9A38800A667A1 /* FirebaseAnalytics */; };
 		9088FD8B2DA9A38800A667A1 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 9088FD8A2DA9A38800A667A1 /* FirebaseAuth */; };
 		9088FD8D2DA9A38800A667A1 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 9088FD8C2DA9A38800A667A1 /* FirebaseCore */; };
@@ -68,6 +69,7 @@
 				9088FD8F2DA9A38800A667A1 /* FirebaseDatabase in Frameworks */,
 				90FA51552DAA905B00DED01E /* GoogleGenerativeAI in Frameworks */,
 				9088FD932DA9A38800A667A1 /* FirebaseFirestoreCombine-Community in Frameworks */,
+				9039916F2E0BC8F00074339D /* DotLottie in Frameworks */,
 				9088FD952DA9A38800A667A1 /* FirebaseStorage in Frameworks */,
 				9088FD912DA9A38800A667A1 /* FirebaseFirestore in Frameworks */,
 				9088FD8B2DA9A38800A667A1 /* FirebaseAuth in Frameworks */,
@@ -139,6 +141,7 @@
 				9088FD922DA9A38800A667A1 /* FirebaseFirestoreCombine-Community */,
 				9088FD942DA9A38800A667A1 /* FirebaseStorage */,
 				90FA51542DAA905B00DED01E /* GoogleGenerativeAI */,
+				9039916E2E0BC8F00074339D /* DotLottie */,
 			);
 			productName = MaaKosh;
 			productReference = 90A36D9F2DA98D14003074AB /* MaaKosh.app */;
@@ -225,6 +228,7 @@
 			packageReferences = (
 				9088FD872DA9A38800A667A1 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				90FA51532DAA905B00DED01E /* XCRemoteSwiftPackageReference "generative-ai-swift" */,
+				9039916D2E0BC8F00074339D /* XCRemoteSwiftPackageReference "dotlottie-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 90A36DA02DA98D14003074AB /* Products */;
@@ -426,9 +430,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MaaKosh/MaaKosh.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8D5D6HU857;
+				DEVELOPMENT_TEAM = 428T9SP6S4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -454,9 +459,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MaaKosh/MaaKosh.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8D5D6HU857;
+				DEVELOPMENT_TEAM = 428T9SP6S4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -591,6 +597,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		9039916D2E0BC8F00074339D /* XCRemoteSwiftPackageReference "dotlottie-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/LottieFiles/dotlottie-ios";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		9088FD872DA9A38800A667A1 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
@@ -610,6 +624,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		9039916E2E0BC8F00074339D /* DotLottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9039916D2E0BC8F00074339D /* XCRemoteSwiftPackageReference "dotlottie-ios" */;
+			productName = DotLottie;
+		};
 		9088FD882DA9A38800A667A1 /* FirebaseAnalytics */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 9088FD872DA9A38800A667A1 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

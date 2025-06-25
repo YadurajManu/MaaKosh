@@ -10,8 +10,7 @@ import FirebaseAuth
 import FirebaseFirestore
 
 struct Dashboard: View {
-    @State private var fullName: String = ""
-    @State private var userEmail: String = ""
+    @State private var userProfile = UserProfile()
     @State private var isLoading = true
     @State private var navigateToPrePregnancy = false
     @State private var navigateToPregnancy = false
@@ -65,11 +64,11 @@ struct Dashboard: View {
                 .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
             
             VStack(alignment: .leading, spacing: 12) {
-                Text("Welcome to MaaKosh")
+                Text(userProfile.fullName.isEmpty ? "Welcome to MaaKosh" : "Welcome, \(firstNameOnly(userProfile.fullName))")
                     .font(AppFont.titleMedium())
                     .foregroundColor(.white)
                 
-                Text(userEmail.isEmpty ? "user@example.com" : userEmail)
+                Text(userProfile.email.isEmpty ? "Your health companion" : userProfile.email)
                     .font(AppFont.body())
                     .foregroundColor(.white.opacity(0.9))
                 
@@ -216,16 +215,37 @@ struct Dashboard: View {
             return
         }
         
-        // Set email
-        userEmail = user.email ?? ""
-        
         let db = Firestore.firestore()
         db.collection("users").document(user.uid).getDocument { document, error in
-            if let document = document, document.exists {
-                // Get user profile data
-                if let fullName = document.data()?["fullName"] as? String {
-                    self.fullName = fullName
+            if let document = document, document.exists, let data = document.data() {
+                // Load complete user profile
+                if let fullName = data["fullName"] as? String {
+                    userProfile.fullName = fullName
                 }
+                if let email = data["email"] as? String {
+                    userProfile.email = email
+                } else {
+                    userProfile.email = user.email ?? ""
+                }
+                if let age = data["age"] as? Int {
+                    userProfile.age = age
+                }
+                if let phoneNumber = data["phoneNumber"] as? String {
+                    userProfile.phoneNumber = phoneNumber
+                }
+                if let partnerName = data["partnerName"] as? String {
+                    userProfile.partnerName = partnerName
+                }
+                if let authProvider = data["authProvider"] as? String {
+                    userProfile.authProvider = authProvider
+                }
+                if let isComplete = data["isProfileComplete"] as? Bool {
+                    userProfile.isProfileComplete = isComplete
+                }
+            } else {
+                // Fallback to Firebase user data
+                userProfile.email = user.email ?? ""
+                userProfile.fullName = user.displayName ?? ""
             }
             
             isLoading = false

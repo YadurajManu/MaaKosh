@@ -9,6 +9,8 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 import Security
+import AuthenticationServices
+import CryptoKit
 
 // Typography constants for consistent styling
 struct AppFont {
@@ -111,6 +113,9 @@ struct AuthView: View {
     @State private var showNameTooltip = false
     @State private var hasAppeared = false // Added for entrance animations
     @State private var showForgotPasswordSheet = false // Added for forgot password sheet
+    
+    // Apple Sign In states
+    @State private var currentNonce: String?
     
     private var isFormValid: Bool {
         isEmailValid && !password.isEmpty && 
@@ -509,6 +514,52 @@ struct AuthView: View {
                             .offset(y: hasAppeared ? 0 : 20)
                             .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.65 : 0.55), value: hasAppeared)
                             
+                            // Apple Sign In Section
+                            VStack(spacing: 15) {
+                                // Divider with "OR"
+                                HStack {
+                                    Rectangle()
+                                        .frame(height: 1)
+                                        .foregroundColor(Color.gray.opacity(0.3))
+                                    
+                                    Text("OR")
+                                        .font(AppFont.caption())
+                                        .foregroundColor(Color.gray)
+                                        .padding(.horizontal, 10)
+                                    
+                                    Rectangle()
+                                        .frame(height: 1)
+                                        .foregroundColor(Color.gray.opacity(0.3))
+                                }
+                                .padding(.horizontal, 10)
+                                
+                                // Apple Sign In Button
+                                Button(action: {
+                                    signInWithApple()
+                                }) {
+                                    HStack {
+                                        Image(systemName: "apple.logo")
+                                            .font(.system(size: 18, weight: .medium))
+                                            .foregroundColor(.white)
+                                        
+                                        Text("Continue with Apple")
+                                            .font(AppFont.buttonText())
+                                            .foregroundColor(.white)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 15)
+                                    .background(Color.black)
+                                    .cornerRadius(15)
+                                    .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 3)
+                                }
+                                .buttonStyle(ActionButtonStyle())
+                                .disabled(isLoading)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(authState == .signUp ? 0.75 : 0.65), value: hasAppeared)
+                            }
+                            .padding(.top, 15)
+                            
                             // Toggle between sign in and sign up
                             HStack {
                                 Text(authState == .signIn ? "Don't have an account?" : "Already have an account?")
@@ -602,6 +653,208 @@ struct AuthView: View {
         }
     }
     
+    // MARK: - Apple Sign In Methods
+    
+    private func signInWithApple() {
+        let nonce = randomNonceString()
+        currentNonce = nonce
+        
+        let appleIDProvider = ASAuthorizationAppleIDProvider()
+        let request = appleIDProvider.createRequest()
+        request.requestedScopes = [.fullName, .email]
+        request.nonce = sha256(nonce)
+        
+        let authorizationController = ASAuthorizationController(authorizationRequests: [request])
+        authorizationController.delegate = AppleSignInCoordinator.shared
+        authorizationController.presentationContextProvider = AppleSignInCoordinator.shared
+        
+        // Set up the coordinator with our completion handler
+        AppleSignInCoordinator.shared.configure(
+            currentNonce: nonce,
+            onSuccess: { credential in
+                self.handleAppleSignInSuccess(credential: credential)
+            },
+            onFailure: { error in
+                self.handleAppleSignInFailure(error: error)
+            }
+        )
+        
+        authorizationController.performRequests()
+    }
+    
+    private func handleAppleSignInSuccess(credential: ASAuthorizationAppleIDCredential) {
+        guard let nonce = currentNonce else {
+            alertMessage = "Invalid state: A login callback was received, but no login request was sent."
+            showAlert = true
+            return
+        }
+        
+        guard let appleIDToken = credential.identityToken else {
+            alertMessage = "Unable to fetch identity token"
+            showAlert = true
+            return
+        }
+        
+        guard let idTokenString = String(data: appleIDToken, encoding: .utf8) else {
+            alertMessage = "Unable to serialize token string from data"
+            showAlert = true
+            return
+        }
+        
+        isLoading = true
+        
+        // Create Firebase credential
+        let firebaseCredential = OAuthProvider.credential(withProviderID: "apple.com",
+                                                          idToken: idTokenString,
+                                                          rawNonce: nonce)
+        
+        // Sign in with Firebase
+        Auth.auth().signIn(with: firebaseCredential) { result, error in
+            if let error = error {
+                isLoading = false
+                alertMessage = handleAuthError(error)
+                showAlert = true
+                return
+            }
+            
+            guard let user = result?.user else {
+                isLoading = false
+                alertMessage = "Failed to get user information"
+                showAlert = true
+                return
+            }
+            
+            // Check if this is a new user and handle profile creation
+            handleAppleUserProfile(user: user, credential: credential)
+        }
+    }
+    
+    private func handleAppleSignInFailure(error: Error) {
+        if let authError = error as? ASAuthorizationError {
+            switch authError.code {
+            case .canceled:
+                // User canceled, don't show error
+                return
+            case .failed:
+                alertMessage = "Apple Sign In failed. Please try again."
+            case .invalidResponse:
+                alertMessage = "Invalid response from Apple. Please try again."
+            case .notHandled:
+                alertMessage = "Apple Sign In not handled. Please try again."
+            case .unknown:
+                alertMessage = "Unknown Apple Sign In error. Please try again."
+            @unknown default:
+                alertMessage = "Apple Sign In error. Please try again."
+            }
+        } else {
+            alertMessage = "Apple Sign In failed: \(error.localizedDescription)"
+        }
+        showAlert = true
+    }
+    
+    private func handleAppleUserProfile(user: User, credential: ASAuthorizationAppleIDCredential) {
+        let db = Firestore.firestore()
+        
+        // Check if user profile exists
+        db.collection("users").document(user.uid).getDocument { document, error in
+            isLoading = false
+            
+            if let document = document, document.exists {
+                // Existing user - go to dashboard
+                isAuthenticated = true
+                isNewUser = false
+            } else {
+                // New user - create profile and go to setup
+                var newProfile = UserProfile()
+                
+                // Get name from Apple ID if available
+                var displayName = ""
+                if let fullName = credential.fullName {
+                    let firstName = fullName.givenName ?? ""
+                    let lastName = fullName.familyName ?? ""
+                    displayName = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
+                    newProfile.fullName = displayName
+                }
+                
+                // If no name from Apple, try to get from Firebase user
+                if displayName.isEmpty {
+                    displayName = user.displayName ?? ""
+                    newProfile.fullName = displayName
+                }
+                
+                // Create initial profile document for Apple Sign In user
+                let db = Firestore.firestore()
+                let initialData: [String: Any] = [
+                    "fullName": displayName.isEmpty ? "Apple User" : displayName,
+                    "email": user.email ?? "",
+                    "age": 0, // Will be set in profile setup
+                    "phoneNumber": "",
+                    "partnerName": "",
+                    "lastPeriodDate": Date(),
+                    "cycleLengthInDays": 28,
+                    "isProfileComplete": false,
+                    "authProvider": "apple",
+                    "appleUserID": credential.user,
+                    "createdAt": FieldValue.serverTimestamp(),
+                    "updatedAt": FieldValue.serverTimestamp()
+                ]
+                
+                db.collection("users").document(user.uid).setData(initialData) { error in
+                    if let error = error {
+                        alertMessage = "Failed to create profile: \(error.localizedDescription)"
+                        showAlert = true
+                    } else {
+                        isAuthenticated = true
+                        isNewUser = true
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Apple Sign In Helper Functions
+    
+    private func randomNonceString(length: Int = 32) -> String {
+        precondition(length > 0)
+        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remainingLength = length
+        
+        while remainingLength > 0 {
+            let randoms: [UInt8] = (0..<16).map { _ in
+                var random: UInt8 = 0
+                let errorCode = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+                if errorCode != errSecSuccess {
+                    fatalError("Unable to generate nonce. SecRandomCopyBytes failed with OSStatus \(errorCode)")
+                }
+                return random
+            }
+            
+            randoms.forEach { random in
+                if remainingLength == 0 {
+                    return
+                }
+                
+                if random < charset.count {
+                    result.append(charset[Int(random)])
+                    remainingLength -= 1
+                }
+            }
+        }
+        
+        return result
+    }
+    
+    private func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        let hashedData = SHA256.hash(data: inputData)
+        let hashString = hashedData.compactMap {
+            String(format: "%02x", $0)
+        }.joined()
+        
+        return hashString
+    }
+    
     // MARK: - Firebase Authentication Methods
     
     private func signIn() {
@@ -662,7 +915,14 @@ struct AuthView: View {
         let userData: [String: Any] = [
             "fullName": fullName,
             "email": email,
+            "authProvider": "email",
+            "age": 0,
+            "phoneNumber": "",
+            "partnerName": "",
+            "lastPeriodDate": Date(),
+            "cycleLengthInDays": 28,
             "createdAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp(),
             "userId": user.uid,
             "isProfileComplete": false
         ]

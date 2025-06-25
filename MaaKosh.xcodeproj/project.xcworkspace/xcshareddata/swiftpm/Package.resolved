@@ -1,5 +1,5 @@
 {
-  "originHash" : "2a48b4b9710c63136eea02e19c63a5aacc8f86e410be1d57e11c52c050d250b2",
+  "originHash" : "992f732bfb17352fcd63a93bab5d4da408c27ec1b0608a7c54835046f0be781c",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "61b85103a1aeed8218f17c794687781505fbbef5",
         "version" : "11.2.0"
+      }
+    },
+    {
+      "identity" : "dotlottie-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/LottieFiles/dotlottie-ios",
+      "state" : {
+        "branch" : "main",
+        "revision" : "188ff38c583627fac2924d5fba2e1f3cd472aa05"
       }
     },
     {

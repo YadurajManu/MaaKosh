@@ -946,7 +946,7 @@ struct ProfileView: View {
                     .font(AppFont.titleMedium())
                     .foregroundColor(.primary)
                 
-                Text(Auth.auth().currentUser?.email ?? "")
+                                        Text(userProfile.email.isEmpty ? (Auth.auth().currentUser?.email ?? "") : userProfile.email)
                     .font(AppFont.caption())
                     .foregroundColor(.secondary)
             }

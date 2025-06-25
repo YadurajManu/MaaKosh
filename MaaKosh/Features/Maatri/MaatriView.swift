@@ -24,6 +24,7 @@ enum MessageFeedback: String, CaseIterable {
 
 // User context to provide to the AI
 struct UserHealthContext {
+    var userName: String = ""
     var currentPregnancyWeek: Int = 0
     var trimester: String = ""
     var dueDate: Date = Date()
@@ -49,6 +50,7 @@ struct UserHealthContext {
     func toPromptText() -> String {
         var contextText = """
         --- User Health Context ---
+        Name: \(userName.isEmpty ? "User" : userName)
         Pregnancy Week: \(currentPregnancyWeek > 0 ? String(currentPregnancyWeek) : "Not pregnant")
         Trimester: \(trimester)
         Due Date: \(formattedDueDate)
@@ -576,8 +578,10 @@ struct MaatriView: View {
     
     // Add welcome message
     private func addInitialMessage() {
+        let greeting = userContext.userName.isEmpty ? "Hello!" : "Hello, \(userContext.userName.components(separatedBy: " ").first ?? userContext.userName)!"
+        
         let welcomeMessage = Message(
-            content: "Hello! I'm Maatri, your personal maternal health assistant. I'm here to support you on your pregnancy journey with reliable information and guidance. How can I help you today?",
+            content: "\(greeting) I'm Maatri, your personal maternal health assistant. I'm here to support you on your pregnancy journey with reliable information and guidance. How can I help you today?",
             isUser: false
         )
         messages.append(welcomeMessage)
@@ -598,6 +602,11 @@ struct MaatriView: View {
             
             // Parse basic user data
             var newContext = UserHealthContext()
+            
+            // Get user's name
+            if let fullName = document.data()?["fullName"] as? String {
+                newContext.userName = fullName
+            }
             
             // Get user's age
             if let age = document.data()?["age"] as? Int {

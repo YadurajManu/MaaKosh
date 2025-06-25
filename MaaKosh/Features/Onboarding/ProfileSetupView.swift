@@ -162,6 +162,9 @@ struct ProfileSetupView: View {
             hideKeyboard()
             showingTooltip = nil
         }
+        .onAppear {
+            loadExistingUserData()
+        }
         .fullScreenCover(isPresented: $navigateToHome) {
             DashboardView()
         }
@@ -447,6 +450,41 @@ struct ProfileSetupView: View {
             } else {
                 // Navigate to main content view
                 navigateToHome = true
+            }
+        }
+    }
+    
+    private func loadExistingUserData() {
+        guard let user = Auth.auth().currentUser else { return }
+        
+        let db = Firestore.firestore()
+        db.collection("users").document(user.uid).getDocument { document, error in
+            if let document = document, document.exists, let data = document.data() {
+                // Pre-fill existing data
+                if let fullName = data["fullName"] as? String, !fullName.isEmpty {
+                    userProfile.fullName = fullName
+                }
+                if let email = data["email"] as? String, !email.isEmpty {
+                    userProfile.email = email
+                } else {
+                    userProfile.email = user.email ?? ""
+                }
+                if let age = data["age"] as? Int, age > 0 {
+                    userProfile.age = age
+                }
+                if let phoneNumber = data["phoneNumber"] as? String, !phoneNumber.isEmpty {
+                    userProfile.phoneNumber = phoneNumber
+                }
+                if let partnerName = data["partnerName"] as? String, !partnerName.isEmpty {
+                    userProfile.partnerName = partnerName
+                }
+                if let authProvider = data["authProvider"] as? String {
+                    userProfile.authProvider = authProvider
+                }
+            } else {
+                // For new users, get basic info from Firebase Auth
+                userProfile.email = user.email ?? ""
+                userProfile.fullName = user.displayName ?? ""
             }
         }
     }
