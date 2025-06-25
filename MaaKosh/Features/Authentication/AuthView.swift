@@ -117,6 +117,10 @@ struct AuthView: View {
     // Apple Sign In states
     @State private var currentNonce: String?
     
+    // Password visibility states
+    @State private var isPasswordVisible = false
+    @State private var isConfirmPasswordVisible = false
+    
     private var isFormValid: Bool {
         isEmailValid && !password.isEmpty && 
         (authState == .signIn || (!fullName.isEmpty && termsAccepted))
@@ -153,8 +157,7 @@ struct AuthView: View {
                 )
                 .ignoresSafeArea()
                 
-                ScrollView {
-                    VStack(spacing: 20) {
+                VStack(spacing: 15) {
                         // Logo and title
                         VStack(spacing: 10) {
                             Image("Logo")
@@ -270,14 +273,18 @@ struct AuthView: View {
                                     }
                                     
                                     Button(action: {
-                                        withAnimation {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
                                             showPassword.toggle()
                                         }
                                     }) {
-                                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                        Image(showPassword ? "eye-solid" : "eye-closed")
+                                            .renderingMode(.template)
                                             .foregroundColor(Color.maakoshDeepPink.opacity(0.7))
                                             .frame(width: 20, height: 20)
+                                            .scaleEffect(showPassword ? 1.1 : 1.0)
+                                            .animation(.easeInOut(duration: 0.2), value: showPassword)
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                                 .padding()
                                 .background(Color.white.opacity(0.8))
@@ -594,7 +601,6 @@ struct AuthView: View {
                         Spacer(minLength: 40)
                     }
                     .padding(.bottom, 20)
-                }
                 .onAppear {
                     // Initial state for elements to be animated
                     self.hasAppeared = false

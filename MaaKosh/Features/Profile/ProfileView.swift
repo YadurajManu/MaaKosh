@@ -83,6 +83,7 @@ struct ProfileView: View {
     // Add state variables for re-authentication
     @State private var showReauthDialog = false
     @State private var password = ""
+    @State private var isPasswordVisible = false
     
     // Add models and state for medical history
     @State private var medicalRecords: [MedicalRecord] = []
@@ -136,16 +137,18 @@ struct ProfileView: View {
             .sheet(isPresented: $isEditMode) {
                 ProfileEditView(userProfile: $userProfile)
             }
-            // Add the re-authentication dialog to the view
-            .alert("Re-enter Password", isPresented: $showReauthDialog) {
-                SecureField("Password", text: $password)
-                Button("Cancel", role: .cancel) {
-                    password = ""
-                    isLoading = false
-                }
-                Button("Confirm", action: reauthenticateAndDelete)
-            } message: {
-                Text("For security, please re-enter your password to delete your account.")
+            // Add the re-authentication sheet
+            .sheet(isPresented: $showReauthDialog) {
+                ReauthenticationView(
+                    password: $password,
+                    isPasswordVisible: $isPasswordVisible,
+                    isPresented: $showReauthDialog,
+                    onConfirm: reauthenticateAndDelete,
+                    onCancel: {
+                        password = ""
+                        isLoading = false
+                    }
+                )
             }
             // Add sheet for medical record form
             .sheet(isPresented: $showAddMedicalRecord) {
@@ -2277,6 +2280,116 @@ struct DashboardEmergencyContacts: View {
         if UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url)
         }
+    }
+}
+
+// Custom Re-authentication View with Eye Toggle
+struct ReauthenticationView: View {
+    @Binding var password: String
+    @Binding var isPasswordVisible: Bool
+    @Binding var isPresented: Bool
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 30) {
+                Spacer()
+                
+                // Header
+                VStack(spacing: 15) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 50))
+                        .foregroundColor(.maakoshDeepPink)
+                    
+                    Text("Security Verification")
+                        .font(AppFont.titleMedium())
+                        .foregroundColor(.primary)
+                    
+                    Text("For security, please re-enter your password to delete your account.")
+                        .font(AppFont.body())
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                }
+                
+                // Password Field with Eye Toggle
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Password")
+                        .font(AppFont.caption())
+                        .foregroundColor(.secondary)
+                    
+                    HStack {
+                        if isPasswordVisible {
+                            TextField("Enter your password", text: $password)
+                                .font(AppFont.body())
+                                .foregroundColor(.primary)
+                        } else {
+                            SecureField("Enter your password", text: $password)
+                                .font(AppFont.body())
+                                .foregroundColor(.primary)
+                        }
+                        
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isPasswordVisible.toggle()
+                            }
+                        }) {
+                            Image(isPasswordVisible ? "eye-solid" : "eye-closed")
+                                .renderingMode(.template)
+                                .foregroundColor(.maakoshDeepPink.opacity(0.7))
+                                .frame(width: 20, height: 20)
+                                .scaleEffect(isPasswordVisible ? 1.1 : 1.0)
+                                .animation(.easeInOut(duration: 0.2), value: isPasswordVisible)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.maakoshDeepPink.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal, 20)
+                
+                Spacer()
+                
+                // Action Buttons
+                VStack(spacing: 15) {
+                    Button(action: {
+                        onConfirm()
+                        isPresented = false
+                    }) {
+                        Text("Confirm")
+                            .font(AppFont.titleSmall())
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.maakoshDeepPink)
+                            .cornerRadius(12)
+                    }
+                    .disabled(password.isEmpty)
+                    .opacity(password.isEmpty ? 0.6 : 1.0)
+                    
+                    Button(action: {
+                        onCancel()
+                        isPresented = false
+                    }) {
+                        Text("Cancel")
+                            .font(AppFont.body())
+                            .foregroundColor(.maakoshDeepPink)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 30)
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
+        }
+        .interactiveDismissDisabled()
     }
 }
 
