@@ -149,32 +149,6 @@ Follow these instructions to get a copy of the project up and running on your lo
 
 ---
 
-## ❤️ Contributing
-
-Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-If you have a suggestion that would make MaaKosh better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-### How to Contribute
-
-1.  **Fork the Project:** Click the 'Fork' button at the top right of the page.
-2.  **Create your Feature Branch:**
-    ```bash
-    git checkout -b feature/AmazingFeature
-    ```
-3.  **Commit your Changes:**
-    ```bash
-    git commit -m 'Add some AmazingFeature'
-    ```
-4.  **Push to the Branch:**
-    ```bash
-    git push origin feature/AmazingFeature
-    ```
-5.  **Open a Pull Request:** Go to your fork on GitHub and click the 'New pull request' button.
-
-We look forward to your contributions!
-
 We hope MaaKosh brings you joy and support on your incredible journey into motherhood!
 ## GitAds Sponsored
 [![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=yadurajmanu/maakosh@github)](https://gitads.dev/v1/ad-track?source=yadurajmanu/maakosh@github)
