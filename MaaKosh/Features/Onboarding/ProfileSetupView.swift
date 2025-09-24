@@ -161,9 +161,21 @@ struct ProfileSetupView: View {
         .onTapGesture {
             hideKeyboard()
             showingTooltip = nil
+            if showDatePicker {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showDatePicker = false
+                    activeField = nil
+                }
+            }
         }
         .onAppear {
             loadExistingUserData()
+            // Ensure the date is set to start of day
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month, .day], from: userProfile.lastPeriodDate)
+            if let startOfDay = calendar.date(from: components) {
+                userProfile.lastPeriodDate = startOfDay
+            }
         }
         .fullScreenCover(isPresented: $navigateToHome) {
             DashboardView()
@@ -324,9 +336,10 @@ struct ProfileSetupView: View {
                     .padding(.horizontal)
                 
                 Button(action: {
-                    withAnimation {
+                    withAnimation(.easeInOut(duration: 0.3)) {
                         showDatePicker.toggle()
                         activeField = .period
+                        showingTooltip = showDatePicker ? nil : .period
                     }
                 }) {
                     HStack {
@@ -337,34 +350,77 @@ struct ProfileSetupView: View {
                         
                         Spacer()
                         
-                        Image(systemName: "calendar")
+                        Image(systemName: showDatePicker ? "calendar.badge.minus" : "calendar")
                             .foregroundColor(Color.maakoshDeepPink)
+                            .animation(.easeInOut(duration: 0.2), value: showDatePicker)
                     }
                     .padding()
                     .background(Color.white.opacity(0.8))
                     .cornerRadius(15)
                     .overlay(
                         RoundedRectangle(cornerRadius: 15)
-                            .stroke(Color.maakoshMediumPink.opacity(0.2), lineWidth: 1)
+                            .stroke(
+                                showDatePicker ? Color.maakoshDeepPink.opacity(0.5) : 
+                                (isDateValid && userProfile.lastPeriodDate != Date()) ? Color.green.opacity(0.5) :
+                                Color.maakoshMediumPink.opacity(0.2), 
+                                lineWidth: showDatePicker ? 2 : 1
+                            )
                     )
                 }
                 
                 if showDatePicker {
-                    DatePicker(
-                        "Select date",
-                        selection: $userProfile.lastPeriodDate,
-                        in: ...Date(),
-                        displayedComponents: .date
-                    )
-                    .datePickerStyle(GraphicalDatePickerStyle())
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 15).fill(Color.white))
-                    .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
-                    .transition(.scale.combined(with: .opacity))
+                    VStack(spacing: 15) {
+                        VStack(spacing: 10) {
+                            Text("Selected: \(formatDate(userProfile.lastPeriodDate))")
+                                .font(AppFont.caption())
+                                .foregroundColor(Color.maakoshDeepPink)
+                                .padding(.horizontal)
+                            
+                            DatePicker(
+                                "Select date",
+                                selection: $userProfile.lastPeriodDate,
+                                in: Calendar.current.date(byAdding: .year, value: -2, to: Date())!...Date(),
+                                displayedComponents: .date
+                            )
+                            .datePickerStyle(GraphicalDatePickerStyle())
+                            .padding()
+                            .background(RoundedRectangle(cornerRadius: 15).fill(Color.white))
+                            .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+                            .transition(.scale.combined(with: .opacity))
+                            .onChange(of: userProfile.lastPeriodDate) { newDate in
+                                // Ensure the date is set to start of day to avoid timezone issues
+                                let calendar = Calendar.current
+                                let components = calendar.dateComponents([.year, .month, .day], from: newDate)
+                                if let startOfDay = calendar.date(from: components) {
+                                    userProfile.lastPeriodDate = startOfDay
+                                }
+                            }
+                        }
+                        
+                        // Done button for date picker
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showDatePicker = false
+                                activeField = nil
+                            }
+                        }) {
+                            Text("Done")
+                                .font(AppFont.buttonText())
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.maakoshDeepPink)
+                                .cornerRadius(12)
+                                .shadow(color: Color.maakoshDeepPink.opacity(0.3), radius: 3, x: 0, y: 2)
+                        }
+                    }
                 }
                 
-                if !isDateValid && showingTooltip == .period {
+                // Validation feedback
+                if !isDateValid && userProfile.lastPeriodDate > Date() {
                     TooltipView(text: "Last period date cannot be in the future")
+                } else if isDateValid && userProfile.lastPeriodDate != Date() {
+                    TooltipView(text: "✓ Date selected successfully")
                 }
             }
             .padding(.vertical, 20)
@@ -422,6 +478,7 @@ struct ProfileSetupView: View {
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
+        formatter.locale = Locale(identifier: "en_US")
         return formatter.string(from: date)
     }
     

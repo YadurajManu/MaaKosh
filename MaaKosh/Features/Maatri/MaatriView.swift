@@ -114,7 +114,7 @@ struct MaatriView: View {
         } else if userContext.currentPregnancyWeek <= 42 { // Third trimester (up to 42 weeks)
             questions.append("Preparing for labor and delivery?")
             questions.append("What to pack in a hospital bag?")
-        } else { // Postpartum or beyond typical pregnancy duration (or if week is 0 but not TTC)
+        } else { 
             questions.append("Tips for postpartum recovery?")
             questions.append("Newborn care basics.")
         }

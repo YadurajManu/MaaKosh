@@ -15,7 +15,7 @@ struct UserProfile: Codable {
     var age: Int = 0
     var phoneNumber: String = ""
     var partnerName: String = ""
-    var lastPeriodDate: Date = Date()
+    var lastPeriodDate: Date = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     var cycleLengthInDays: Int = 28
     var isProfileComplete: Bool = false
     var authProvider: String = "email" // "email", "apple", etc.

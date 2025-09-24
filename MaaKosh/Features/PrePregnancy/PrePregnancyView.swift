@@ -128,11 +128,6 @@ struct PrePregnancyView: View {
                 loadCycleSettings()
                 generateRecommendations()
             }
-            // FAB for adding data
-            .overlay(
-                addButton,
-                alignment: .bottomTrailing
-            )
             
             // Date action dialog
             if showDateActionDialog, let selectedDate = selectedDate {
@@ -1596,24 +1591,6 @@ struct PrePregnancyView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
     }
     
-    private var addButton: some View {
-        Button(action: {
-            // Show add options for period, test, etc.
-        }) {
-            ZStack {
-                Circle()
-                    .fill(Color.pink)
-                    .frame(width: 60, height: 60)
-                    .shadow(color: Color.pink.opacity(0.3), radius: 5, x: 0, y: 3)
-                
-                Image(systemName: "plus")
-                    .font(.system(size: 30, weight: .medium))
-                    .foregroundColor(.white)
-            }
-        }
-        .padding(.trailing, 20)
-        .padding(.bottom, 20)
-    }
     
     // MARK: - Helper Methods
     
