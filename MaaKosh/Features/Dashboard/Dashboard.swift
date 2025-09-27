@@ -15,6 +15,8 @@ struct Dashboard: View {
     @State private var navigateToPrePregnancy = false
     @State private var navigateToPregnancy = false
     @State private var navigateToNewbornCare = false
+    @State private var navigateToPartnerSharing = false
+    @State private var navigateToSupportGroups = false
     
     var body: some View {
         ScrollView {
@@ -51,6 +53,16 @@ struct Dashboard: View {
         .fullScreenCover(isPresented: $navigateToNewbornCare) {
             NavigationView {
                 NewbornCareView()
+            }
+        }
+        .fullScreenCover(isPresented: $navigateToPartnerSharing) {
+            NavigationView {
+                PartnerSharingView()
+            }
+        }
+        .fullScreenCover(isPresented: $navigateToSupportGroups) {
+            NavigationView {
+                SupportGroupsView()
             }
         }
     }
@@ -132,6 +144,7 @@ struct Dashboard: View {
                 .padding(.leading, 8)
                 .padding(.top, 10)
             
+            // First row
             HStack(spacing: 15) {
                 // Health Tracking
                 smallServiceCard(
@@ -148,6 +161,27 @@ struct Dashboard: View {
                     title: "Doctor Consultation",
                     action: {
                         // Will implement in the future
+                    }
+                )
+            }
+            
+            // Second row
+            HStack(spacing: 15) {
+                // Partner Sharing
+                smallServiceCard(
+                    icon: "person.2.fill",
+                    title: "Partner Sharing",
+                    action: {
+                        navigateToPartnerSharing = true
+                    }
+                )
+                
+                // Support Groups
+                smallServiceCard(
+                    icon: "person.3.fill",
+                    title: "Support Groups",
+                    action: {
+                        navigateToSupportGroups = true
                     }
                 )
             }
